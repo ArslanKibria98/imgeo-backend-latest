@@ -7,8 +7,6 @@ const User = require("../models/user");
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || "mysecret"; // Secret key
 
-
-
 router.get("/user", async (req, res) => {
   try {
     const token = req.headers.authorization?.split(" ")[1];
@@ -51,32 +49,35 @@ router.get("/allowed-carriers/:userId", async (req, res) => {
 
 // ✅ User Signup Route
 router.post("/signup", async (req, res) => {
-    const { name, email, password } = req.body;
+  var { name, email, password } = req.body;
 
-    try {
-        // Check if the user already exists
-        let user = await User.findOne({ email });
-        if (user) return res.status(400).json({ msg: "User already exists" });
+  try {
+      email = email.toLowerCase();
+      // Check if the user already exists
+      let user = await User.findOne({ email});
+      if (user) return res.status(400).json({ msg: "User already exists" });
 
-        // Hash password
-        const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(password, salt);
+      // Hash password
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(password, salt);
 
-        // Save new user
-        user = new User({ name, email, password: hashedPassword });
-        await user.save();
+      // Save new user
+      user = new User({ name, email, password: hashedPassword });
+      await user.save();
 
-        res.status(201).json({ msg: "User registered successfully" });
-    } catch (err) {
-        res.status(500).json({ msg: "Server error" });
-    }
+      res.status(201).json({ msg: "User registered successfully" });
+  } catch (err) {
+      console.error("Signup error:", err);
+      res.status(500).json({ msg: "Server error" });
+  }
 });
 
 // ✅ User Login Route
 router.post("/login", async (req, res) => {
-    const { email, password } = req.body;
+    var { email, password } = req.body;
 
     try {
+      email = email.toLowerCase();
         // Check if the user exists
         const user = await User.findOne({ email });
         if (!user) return res.status(400).json({ msg: "Invalid credentials" });
@@ -124,49 +125,49 @@ function authenticateToken(req, res, next) {
     }
 }
 
-router.post("/:userId/sub-users", async (req, res) => {
-  try {
-      const { userId } = req.params;
-      const { name, email, password, rate } = req.body;
+// router.post("/:userId/sub-users", async (req, res) => {
+//   try {
+//       const { userId } = req.params;
+//       const { name, email, password, rate } = req.body;
 
-      // Validate input
-      if (!name || !email || !password) {
-          return res.status(400).json({ message: "Name, email, and password are required." });
-      }
+//       // Validate input
+//       if (!name || !email || !password) {
+//           return res.status(400).json({ message: "Name, email, and password are required." });
+//       }
 
-      // Find the parent user (dealer)
-      const user = await User.findById(userId);
-      if (!user) {
-          return res.status(404).json({ message: "User not found." });
-      }
+//       // Find the parent user (dealer)
+//       const user = await User.findById(userId);
+//       if (!user) {
+//           return res.status(404).json({ message: "User not found." });
+//       }
 
-      // Check if sub-user email already exists
-      const existingSubUser = user.subUsers.find(sub => sub.email === email);
-      if (existingSubUser) {
-          return res.status(400).json({ message: "Sub-user with this email already exists." });
-      }
+//       // Check if sub-user email already exists
+//       const existingSubUser = user.subUsers.find(sub => sub.email === email);
+//       if (existingSubUser) {
+//           return res.status(400).json({ message: "Sub-user with this email already exists." });
+//       }
 
-      // Hash the password
-      const hashedPassword = await bcrypt.hash(password, 10);
+//       // Hash the password
+//       const hashedPassword = await bcrypt.hash(password, 10);
 
-      // Create sub-user object
-      const newSubUser = {
-          name,
-          email,
-          password: hashedPassword,
-          rate: rate || 0, // Default to 0 if not provided
-      };
+//       // Create sub-user object
+//       const newSubUser = {
+//           name,
+//           email,
+//           password: hashedPassword,
+//           rate: rate || 0, // Default to 0 if not provided
+//       };
 
-      // Add to sub-users array
-      user.subUsers.push(newSubUser);
-      await user.save();
+//       // Add to sub-users array
+//       user.subUsers.push(newSubUser);
+//       await user.save();
 
-      res.status(201).json({ message: "Sub-user created successfully", subUser: newSubUser });
-  } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: "Internal server error" });
-  }
-});
+//       res.status(201).json({ message: "Sub-user created successfully", subUser: newSubUser });
+//   } catch (error) {
+//       console.error(error);
+//       res.status(500).json({ message: "Internal server error" });
+//   }
+// });
 // router.put("/generate-label/:userid", async (req, res) => {
 //     try {
 //         console.log("Headers received:", req.headers); // Debugging

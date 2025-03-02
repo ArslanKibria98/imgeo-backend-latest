@@ -35,23 +35,23 @@ const AllowedCarrierSchema = new mongoose.Schema({
   // list of allowed vendor names for that carrier
 }, { _id: false });
 
-const SubUserSchema = new mongoose.Schema({
-  name: { type: String, required: true },
-  email: { type: String, required: true, unique: true, trim:true },
-  password: { type: String, required: true },
-  rate :{type: Number, default: 0},
-  labelStats: { type: LabelStatsSchema, default: {} },
-  allowedCarriers: { type: [AllowedCarrierSchema], default: [] },
-  createdat:{ type: Date, default: Date.now },
-  labelHistory: { type: [LabelSchema], default: [] },
-  bulkLabelHistory: { type: [BulkLabelSchema], default: [] }
-  // You can add additional fields here as needed (e.g., role, permissions, etc.)
-}, { timestamps: true });
+// const SubUserSchema = new mongoose.Schema({
+//   name: { type: String, required: true },
+//   email: { type: String, required: true, trim:true , sparse: true },
+//   password: { type: String, required: true },
+//   rate :{type: Number, default: 0},
+//   labelStats: { type: LabelStatsSchema, default: {} },
+//   allowedCarriers: { type: [AllowedCarrierSchema], default: [] },
+//   createdat:{ type: Date, default: Date.now },
+//   labelHistory: { type: [LabelSchema], default: [] },
+//   bulkLabelHistory: { type: [BulkLabelSchema], default: [] }
+//   // You can add additional fields here as needed (e.g., role, permissions, etc.)
+// }, { timestamps: true });
 
 
 const UserSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
-  email: { type: String, required: true, unique: true,trim: true },
+  email: { type: String, required: true,trim: true ,sparse: true },
   password: { type: String, required: true },
   availableBalance: { type: Number, default: 0 },
   rate :{type: Number, default: 0},
@@ -60,7 +60,7 @@ const UserSchema = new mongoose.Schema({
   isDealer: { type: Boolean, default: false },
   // For single label generation:
   allowedCarriers: { type: [AllowedCarrierSchema], default: [] },
-  subUsers: { type: [SubUserSchema], default: [] },
+  // subUsers: { type: [SubUserSchema], default: [] },
   labelStats: { type: LabelStatsSchema, default: {} },
   // For bulk label generation, each bulk event stores an array of labels:
   labelHistory: { type: [LabelSchema], default: [] },

@@ -35,7 +35,8 @@ router.post(
         }
 
         try {
-            const { name, email, password } = req.body;
+            var { name, email, password } = req.body;
+            email = email.toLowerCase();
 
             // Check if admin already exists
             let admin = await Admin.findOne({ email });
@@ -73,7 +74,8 @@ router.post(
             return res.status(400).json({ errors: errors.array() });
         }
 
-        const { email, password } = req.body;
+        var { email, password } = req.body;
+        email = email.toLowerCase();
 
         try {
             const admin = await Admin.findOne({ email });
@@ -167,7 +169,7 @@ router.post("/upload-shipments", async (req, res) => {
 
     // Transform each row to match the ShipmentSchema
     const shipmentsToInsert = rows.map(row => ({
-      carrier: row.Carrier,
+      carrier: row.Carrier.toLowerCase(),
       tracking: row.tracking,
       labelType: row.labelType,
     }));
@@ -205,7 +207,7 @@ router.get("/read/shipts", async (req, res) => {
       // Find the first matching shipment and delete it atomically
       const shipment = await shipTs.findOneAndDelete({ labelType, carrier });
       if (!shipment) {
-        return res.status(404).json({ msg: "No matching shipment found" });
+        return res.status(404).json({ msg: "Server Error Our Team Try to fix Pls Wait...." });
       }
   
       res.json({
