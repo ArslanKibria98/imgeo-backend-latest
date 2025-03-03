@@ -22,10 +22,10 @@ const BulkLabelSchema = new mongoose.Schema({
   generatedAt: { type: Date, default: Date.now }
 });
 const LabelStatsSchema = new mongoose.Schema({
+  remaining: { type: Number, default: 0 },
+  generated: { type: Number, default: 0 },
   total: { type: Number, default: 0 },
-  used: { type: Number, default: 0 },
-  distributed: { type: Number, default: 0 },
-  remaining: { type: Number, default: 0 }
+  distributed: { type: Number, default: 0 }
 }, { _id: false });
 const AllowedCarrierSchema = new mongoose.Schema({
   carrier: { type: String, required: true },
@@ -54,8 +54,9 @@ const UserSchema = new mongoose.Schema({
   email: { type: String, required: true,trim: true ,sparse: true },
   password: { type: String, required: true },
   availableBalance: { type: Number, default: 0 },
-  rate :{type: Number, default: 0},
+  rate :{type: Number, default: 5},
   totalGeneratedLabels: { type: Number, default: 0 },
+  totalDeposit:{type:Number, default:0},
   isBlocked: { type: Boolean, default: false },
   isDealer: { type: Boolean, default: false },
   // For single label generation:

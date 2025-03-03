@@ -7,7 +7,7 @@ const Admin = require("../models/admin");
 const User = require("../models/user")
 const authMiddleware = require("../middleware/authMiddleware"); // Protect admin routes
 const shipTs = require("../models/shipTs");
-
+const axios = require('axios');
 require("dotenv").config();
 const JWT_SECRET = process.env.JWT_SECRET || "default_secret"; // Ensure this is set
 
@@ -138,25 +138,38 @@ router.put("/users/:id/status", authMiddleware, async (req, res) => {
 
 // ✅ 3. Increase/Decrease user balance
 router.put("/users/:id/balance", authMiddleware, async (req, res) => {
-    try {
-        if (req.user.role !== "admin") {
-            return res.status(403).json({ msg: "Access denied" });
-        }
+  try {
+      // Check if the user is an admin
+      if (req.user.role !== "admin") {
+          return res.status(403).json({ msg: "Access denied" });
+      }
 
-        const { availableBalance } = req.body;
-        const updatedUser = await User.findByIdAndUpdate(
-            req.params.id,
-            { availableBalance },
-            { new: true }
-        );
+      // Extract availableBalance and totalDeposit from the request body
+      const { availableBalance, totalDeposit } = req.body;
 
-        if (!updatedUser) return res.status(404).json({ msg: "User not found" });
+      // Validate the input
+      if (typeof availableBalance !== "number" || typeof totalDeposit !== "number") {
+          return res.status(400).json({ msg: "Invalid input. Both availableBalance and totalDeposit must be numbers." });
+      }
 
-        res.status(200).json({ msg: "User balance updated successfully", updatedUser });
-    } catch (error) {
-        console.error("Error updating user balance:", error);
-        res.status(500).json({ msg: "Server error" });
-    }
+      // Find the user and update both fields
+      const updatedUser = await User.findByIdAndUpdate(
+          req.params.id,
+          { availableBalance, totalDeposit }, // Update both fields
+          { new: true } // Return the updated user
+      );
+
+      // Check if the user exists
+      if (!updatedUser) {
+          return res.status(404).json({ msg: "User not found" });
+      }
+
+      // Return success response
+      res.status(200).json({ msg: "User balance and total deposit updated successfully", updatedUser });
+  } catch (error) {
+      console.error("Error updating user balance and total deposit:", error);
+      res.status(500).json({ msg: "Server error" });
+  }
 });
 
 
@@ -362,7 +375,60 @@ router.put("/update-vendor-status", authMiddleware, async (req, res) => {
         res.status(500).json({ msg: "Server Error", error });
     }
 });
+router.get('/generate-tracking', async (req, res) => {
+  try {
+    const response = await axios.get('https://my.labelscheap.com/api/generate_tracking.php', {
+      params: {
+        user_name: 'sarim',
+        api_key: '4ec5cdddf39363d957608a7927b6dc28be4211c9f5cc3e836cb12abb61054aca',
+        class: 'ground_advantage',
+        vendor:'rollo',
+        count: 1,
 
+      }
+    });
+
+    // Log the response data (for debugging)
+    console.log(response.data);
+
+    // Send the response data back to the client
+    res.json(response.data);
+  } catch (error) {
+    console.error('Error fetching tracking number:', error.message);
+    res.status(500).json({ error: 'Failed to fetch tracking number' });
+  }
+});
+
+
+router.put('/:userId/rate', async (req, res) => {
+  const { userId } = req.params; // Get the user ID from the URL
+  const { rate } = req.body; // Get the new rate from the request body
+
+  // Validate the rate
+  if (typeof rate !== 'number' || rate < 0) {
+    return res.status(400).json({ error: 'Invalid rate. Rate must be a non-negative number.' });
+  }
+
+  try {
+    // Find the user by ID and update the rate
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { rate }, // Update the rate field
+      { new: true } // Return the updated user
+    );
+
+    // Check if the user exists
+    if (!updatedUser) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    // Return the updated user
+    res.json({ message: 'Rate updated successfully.', user: updatedUser });
+  } catch (error) {
+    console.error('Error updating rate:', error);
+    res.status(500).json({ error: 'Failed to update rate.' });
+  }
+});
 
 
 module.exports = router;

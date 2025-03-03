@@ -90,9 +90,11 @@ router.post("/login", async (req, res) => {
         const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: "1h" });
         const userData = {
             id: user._id,
+            rate:user.rate,
             name: user.name,
             email: user.email,
             availableBalance: user.availableBalance,
+            totalDeposit: user.totalDeposit,
             totalGeneratedLabels:user.totalGeneratedLabels
             // Include other relevant user data as needed
         };
@@ -234,8 +236,9 @@ router.put("/generate-label/:userid", async (req, res) => {
       const decoded = jwt.verify(token, JWT_SECRET);
       const userId = decoded.userId;
       
-      console.log("Decoded user ID:", userId);
-      console.log("Requested user ID:", req.params.userid);
+      // console.log("Decoded user ID:", userId);
+      // console.log("Requested user ID:", req.params.userid);
+      // console.log(user.rate);
       
       // Ensure the decoded user matches the request
       if (userId !== req.params.userid) {
@@ -247,8 +250,8 @@ router.put("/generate-label/:userid", async (req, res) => {
       if (!user) return res.status(404).json({ msg: "User not found" });
       
       // Single label generation mode
-      user.availableBalance -= 1;
-      user.totalGeneratedLabels += 1;
+      user.availableBalance -= user.rate;
+      user.totalGeneratedLabels += user.rate;
       
       // Create a single label record
       user.labelHistory.push({
