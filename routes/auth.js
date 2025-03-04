@@ -28,9 +28,7 @@ router.get("/user", async (req, res) => {
 
 router.get("/barcode", async (req, res) => {
   try {
-    const response = await axios.get("https://my.labelscheap.com/api/barcodev2.php", {
-      params: req.query, // Pass query parameters to the external API
-    });
+    const response = await axios.get("https://my.labelscheap.com/api/barcodev2.php");
     res.json(response.data); // Return the response to the frontend
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch data" });

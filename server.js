@@ -13,7 +13,7 @@ const corsOptions = {
   allowedHeaders: "Content-Type,Authorization", // Allowed headers
 };
 app.use(cors(corsOptions));
-app.options("*", cors(corsOptions));
+// app.options("*", cors(corsOptions));
 
 
 // Middleware
@@ -37,9 +37,9 @@ mongoose
   .catch((err) => console.error("❌ MongoDB Connection Error:", err));
 
 // Serve Static Files (React Build)
-app.use(express.static(path.join(__dirname, "build")));
-app.get("*", (req, res) => {
-  res.sendFile(path.join(__dirname, "build", "index.html"));
+app.use(express.static(path.join(__dirname, 'client/build')));
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'client/build', 'index.html'));
 });
 
 // Error Handling Middleware
