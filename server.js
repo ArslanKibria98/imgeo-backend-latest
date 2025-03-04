@@ -38,12 +38,15 @@ mongoose
 
 // Serve Static Files (React Build)
 // Serve Static Files (React Build)
+// Serve Static Files (React Build)
 app.use(express.static(path.join(__dirname, "build")));
 
-// Serve React App for unknown routes (SPA Handling)
-app.get("*", (req, res) => {
-  res.sendFile(path.resolve(__dirname, "build", "index.html"));
+// Ensure React handles routing
+app.get("*", (req, res, next) => {
+    if (req.path.startsWith("/api")) return next(); // Don't interfere with API routes
+    res.sendFile(path.resolve(__dirname, "build", "index.html"));
 });
+
 
 
 // Error Handling Middleware
