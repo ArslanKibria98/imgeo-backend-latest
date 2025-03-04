@@ -116,23 +116,27 @@ router.post("/login", async (req, res) => {
 
 // ✅ Protected Route (Only accessible with valid token)
 router.get("/protected", authenticateToken, async (req, res) => {
-    res.json({ msg: "You have accessed a protected route!" });
+  res.json({ msg: "You have accessed a protected route!" });
 });
+
 
 
 
 // ✅ Middleware to Authenticate JWT Token
 function authenticateToken(req, res, next) {
-    const token = req.header("Authorization");
-    if (!token) return res.status(401).json({ msg: "Access Denied" });
+  const token = req.header("Authorization");
+  if (!token) return res.status(401).json({ msg: "Access Denied" });
 
-    try {
-        const verified = jwt.verify(token, JWT_SECRET);
-        req.user = verified;
-        next();
-    } catch (err) {
-        res.status(401).json({ msg: "Invalid Token" });
-    }
+  try {
+      const verified = jwt.verify(token, JWT_SECRET);
+      req.user = verified;
+      next();
+  } catch (err) {
+      if (err.name === "TokenExpiredError") {
+          return res.status(401).json({ msg: "Token expired. Please log in again." });
+      }
+      res.status(401).json({ msg: "Invalid Token" });
+  }
 }
 
 // router.post("/:userId/sub-users", async (req, res) => {
@@ -278,6 +282,7 @@ router.put("/generate-label/:userid", async (req, res) => {
         recipientCity: req.body.recipientCity,
         recipientState: req.body.recipientState,
         recipientZip: req.body.recipientZip,
+        barcodeImg: req.body.barcodeImg,
         generatedAt: new Date()
       });
       
@@ -327,8 +332,8 @@ router.put("/generate-label/:userid", async (req, res) => {
         if (!user) return res.status(404).json({ msg: "User not found" });
         
         // Single label generation mode
-        user.availableBalance -= 1;
-        user.totalGeneratedLabels += 1;
+        user.availableBalance -= user.rate;
+        user.totalGeneratedLabels += user.rate;
         
         // Create a single label record
         // user.labelHistory.push({
@@ -418,6 +423,7 @@ router.put("/generate-label/:userid", async (req, res) => {
             recipientCity: label.recipientCity,
             recipientState: label.recipientState,
             recipientZip: label.recipientZip,
+            barcodeImg: label.barcodeImg,
             generatedAt: new Date()
           })),
           generatedAt: new Date()

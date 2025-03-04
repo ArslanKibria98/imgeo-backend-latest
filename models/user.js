@@ -15,6 +15,7 @@ const LabelSchema = new mongoose.Schema({
   recipientCity: { type: String },
   recipientState: { type: String },
   recipientZip: { type: String },
+  barcodeImg:{type:String},
   generatedAt: { type: Date, default: Date.now }
 });
 const BulkLabelSchema = new mongoose.Schema({
