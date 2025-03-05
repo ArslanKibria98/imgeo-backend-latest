@@ -431,4 +431,71 @@ router.put('/:userId/rate', async (req, res) => {
 });
 
 
+
+
+///get data from nameCheap
+router.post('/get/vtno', async (req, res) => {
+  const { vendor, labelType } = req.body;
+
+  try {
+    // Make request to the external API
+    const apiResponse = await axios.get(
+      `https://my.labelscheap.com/api/generate_tracking.php`,
+      {
+        params: {
+          user_name: 'sarim',
+          api_key: '4ec5cdddf39363d957608a7927b6dc28be4211c9f5cc3e836cb12abb61054aca',
+          vendor: vendor,
+          class: labelType,
+          count: 1,
+        },
+      }
+    );
+
+    if (!apiResponse.data.tracking_numbers) {
+      throw new Error('No tracking numbers returned from the API');
+    }
+
+    // Return the tracking number to the frontend
+    res.status(200).json({
+      trackingNumber: apiResponse.data.tracking_numbers[0],
+    });
+  } catch (error) {
+    console.error('Error fetching tracking number:', error.message);
+    res.status(500).json({ error: 'Failed to fetch tracking number' });
+  }
+});
+
+
+
+router.get('/set/barcode', async (req, res) => {
+  try {
+    const { zip, tracking } = req.query;
+
+    // Make request to external API
+    const barcodeResponse = await axios.get(
+      `https://my.labelscheap.com/api/barcodev2.php`,
+      {
+        params: {
+          user_name: 'sarim',
+          api_key: '4ec5cdddf39363d957608a7927b6dc28be4211c9f5cc3e836cb12abb61054aca',
+          f: 'png',
+          s: 'ean-128',
+          zip: zip,
+          tracking: tracking,
+          sf: 3,
+          ms: 'r',
+          md: 0.8,
+        },
+      }
+    );
+
+    // Forward the response to the client
+    res.json(barcodeResponse.data);
+  } catch (error) {
+    console.error('Error fetching barcode:', error.message);
+    res.status(500).json({ error: 'Failed to fetch barcode' });
+  }
+});
+
 module.exports = router;
