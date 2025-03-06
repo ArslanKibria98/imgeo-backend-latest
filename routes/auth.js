@@ -95,7 +95,7 @@ router.post("/login", async (req, res) => {
         if (!isMatch) return res.status(400).json({ msg: "Invalid credentials" });
 
         // Generate JWT Token
-        const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: "1h" });
+        const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: "5h" });
         const userData = {
             id: user._id,
             rate:user.rate,
@@ -272,6 +272,9 @@ router.put("/generate-label/:userid", async (req, res) => {
         labelType: req.body.labelType,
         vendor: req.body.vendor,
         weight: req.body.weight,
+        length: req.body.length,
+        width: req.body.width,
+        height: req.body.height,
         senderName: req.body.senderName,
         senderAddress: req.body.senderAddress,
         senderCity: req.body.senderCity,
@@ -413,6 +416,9 @@ router.put("/generate-label/:userid", async (req, res) => {
             labelType: label.labelType,
             vendor: label.vendor,
             weight: label.weight,
+            height: label.height,
+            width: label.width,
+            length: label.length,
             senderName: label.senderName,
             senderAddress: label.senderAddress,
             senderCity: label.senderCity,
