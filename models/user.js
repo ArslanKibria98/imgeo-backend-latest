@@ -69,7 +69,9 @@ const UserSchema = new mongoose.Schema({
   labelStats: { type: LabelStatsSchema, default: {} },
   // For bulk label generation, each bulk event stores an array of labels:
   labelHistory: { type: [LabelSchema], default: [] },
-  bulkLabelHistory: { type: [BulkLabelSchema], default: [] }
+  bulkLabelHistory: { type: [BulkLabelSchema],      
+    excelContentType: String,
+    generatedAt: Date,  default: [] }
 }, { timestamps: true });
 
 module.exports = mongoose.model("User", UserSchema);

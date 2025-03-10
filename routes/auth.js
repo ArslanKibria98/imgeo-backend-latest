@@ -3,7 +3,8 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("../models/user");
 
-
+const multer = require('multer');
+const upload = multer({ storage: multer.memoryStorage() });
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || "mysecret"; // Secret key
 
@@ -338,25 +339,6 @@ router.put("/generate-label/:userid", async (req, res) => {
         user.availableBalance -= user.rate;
         user.totalGeneratedLabels += user.rate;
         
-        // Create a single label record
-        // user.labelHistory.push({
-        //   trackingNumber: req.body.trackingNumber,
-        //   labelType: req.body.labelType,
-        //   vendor: req.body.vendor,
-        //   weight: req.body.weight,
-        //   senderName: req.body.senderName,
-        //   senderAddress: req.body.senderAddress,
-        //   senderCity: req.body.senderCity,
-        //   senderState: req.body.senderState,
-        //   senderZip: req.body.senderZip,
-        //   recipientName: req.body.recipientName,
-        //   recipientAddress: req.body.recipientAddress,
-        //   recipientCity: req.body.recipientCity,
-        //   recipientState: req.body.recipientState,
-        //   recipientZip: req.body.recipientZip,
-        //   generatedAt: new Date()
-        // });
-        
         await user.save();
         
         return res.json({
@@ -488,7 +470,25 @@ router.put("/generate-label/:userid", async (req, res) => {
       }
     });
 
-   
+   router.get("/download-bulk-file/:bulkId", async (req, res) => {
+  try {
+    const user = await User.findOne({
+      "bulkLabelHistory._id": req.params.bulkId
+    });
+    
+    const bulkEvent = user.bulkLabelHistory.id(req.params.bulkId);
+    
+    res.set({
+      "Content-Type": bulkEvent.excelContentType,
+      "Content-Disposition": `attachment; filename="bulk-labels-${req.params.bulkId}.xlsx"`
+    });
+    
+    res.send(bulkEvent.excelFile);
+  } catch (error) {
+    console.error("Download error:", error);
+    res.status(500).json({ msg: "Error downloading file" });
+  }
+});
 
    
 
