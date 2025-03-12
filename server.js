@@ -4,7 +4,10 @@ const cors = require("cors");
 const path = require("path");
 require("dotenv").config();
 
+
 const app = express();
+app.use(express.json({ limit: "50mb" }));  // Adjust based on your needs
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
 // CORS Configuration
 const corsOptions = {
@@ -17,7 +20,7 @@ app.options("*", cors(corsOptions));
 
 
 // Middleware
-app.use(express.json()); // Parse JSON bodies
+// app.use(express.json()); // Parse JSON bodies
 
 // Import Routes
 const authRoutes = require("./routes/auth");

@@ -353,84 +353,182 @@ router.put("/generate-label/:userid", async (req, res) => {
         return res.status(500).json({ msg: "Server error", error: error.message });
       }
     });
-    router.post("/add-bulk-label-history/:userid", async (req, res) => {
-      try {
-        console.log("Headers received:", req.headers);
+    // router.post("/add-bulk-label-history/:userid", async (req, res) => {
+    //   try {
+    //     console.log("Headers received:", req.headers);
     
-        // Ensure Authorization header exists
-        if (!req.headers.authorization) {
-          return res.status(401).json({ msg: "Authorization header missing" });
-        }
+    //     // Ensure Authorization header exists
+    //     if (!req.headers.authorization) {
+    //       return res.status(401).json({ msg: "Authorization header missing" });
+    //     }
         
-        // Extract token correctly
-        const token = req.headers.authorization.split(" ")[1];
-        if (!token) {
-          return res.status(401).json({ msg: "Token is missing" });
-        }
+    //     // Extract token correctly
+    //     const token = req.headers.authorization.split(" ")[1];
+    //     if (!token) {
+    //       return res.status(401).json({ msg: "Token is missing" });
+    //     }
         
-        // Verify JWT
-        const decoded = jwt.verify(token, JWT_SECRET);
-        const userId = decoded.userId;
+    //     // Verify JWT
+    //     const decoded = jwt.verify(token, JWT_SECRET);
+    //     const userId = decoded.userId;
         
-        console.log("Decoded user ID:", userId);
-        console.log("Requested user ID:", req.params.userid);
+    //     console.log("Decoded user ID:", userId);
+    //     console.log("Requested user ID:", req.params.userid);
         
-        // Ensure the decoded user matches the request
-        if (userId !== req.params.userid) {
-          return res.status(403).json({ msg: "Unauthorized access" });
-        }
+    //     // Ensure the decoded user matches the request
+    //     if (userId !== req.params.userid) {
+    //       return res.status(403).json({ msg: "Unauthorized access" });
+    //     }
         
-        // Find the user
-        const user = await User.findById(userId);
-        if (!user) return res.status(404).json({ msg: "User not found" });
+    //     // Find the user
+    //     const user = await User.findById(userId);
+    //     if (!user) return res.status(404).json({ msg: "User not found" });
         
-        // Extract label data from the request body (expecting an array of label objects)
-        const { labels } = req.body;
-        if (!labels || !Array.isArray(labels) || labels.length === 0) {
-          return res.status(400).json({ msg: "No label data provided" });
-        }
+    //     // Extract label data from the request body (expecting an array of label objects)
+    //     const { labels } = req.body;
+    //     if (!labels || !Array.isArray(labels) || labels.length === 0) {
+    //       return res.status(400).json({ msg: "No label data provided" });
+    //     }
         
-        // Create a new bulk event object containing the provided labels
-        const bulkEvent = {
-          labels: labels.map(label => ({
-            carrier: label?.carrier,
-            trackingNumber: label.trackingNumber,
-            labelType: label.labelType,
-            vendor: label.vendor,
-            weight: label.weight,
-            height: label.height,
-            width: label.width,
-            length: label.length,
-            senderName: label.senderName,
-            senderAddress: label.senderAddress,
-            senderCity: label.senderCity,
-            senderState: label.senderState,
-            senderZip: label.senderZip,
-            recipientName: label.recipientName,
-            recipientAddress: label.recipientAddress,
-            recipientCity: label.recipientCity,
-            recipientState: label.recipientState,
-            recipientZip: label.recipientZip,
-            barcodeImg: label.barcodeImg,
-            generatedAt: new Date()
-          })),
-          generatedAt: new Date()
-        };
+    //     // Create a new bulk event object containing the provided labels
+    //     const bulkEvent = {
+    //       labels: labels.map(label => ({
+    //         carrier: label?.carrier,
+    //         trackingNumber: label.trackingNumber,
+    //         labelType: label.labelType,
+    //         vendor: label.vendor,
+    //         weight: label.weight,
+    //         height: label.height,
+    //         width: label.width,
+    //         length: label.length,
+    //         senderName: label.senderName,
+    //         senderAddress: label.senderAddress,
+    //         senderCity: label.senderCity,
+    //         senderState: label.senderState,
+    //         senderZip: label.senderZip,
+    //         recipientName: label.recipientName,
+    //         recipientAddress: label.recipientAddress,
+    //         recipientCity: label.recipientCity,
+    //         recipientState: label.recipientState,
+    //         recipientZip: label.recipientZip,
+    //         barcodeImg: label.barcodeImg,
+    //         generatedAt: new Date()
+    //       })),
+    //       generatedAt: new Date()
+    //     };
         
-        // Push the new bulk event into the user's bulkLabelHistory array
-        user.bulkLabelHistory.push(bulkEvent);
-        await user.save();
+    //     // Push the new bulk event into the user's bulkLabelHistory array
+    //     user.bulkLabelHistory.push(bulkEvent);
+    //     await user.save();
         
-        return res.json({
-          msg: "Bulk label history updated successfully",
-          bulkLabelHistory: user.bulkLabelHistory
-        });
+    //     return res.json({
+    //       msg: "Bulk label history updated successfully",
+    //       bulkLabelHistory: user.bulkLabelHistory
+    //     });
         
-      } catch (error) {
-        console.error("Server error:", error);
-        return res.status(500).json({ msg: "Server error", error: error.message });
-      }
+    //   } catch (error) {
+    //     console.error("Server error:", error);
+    //     return res.status(500).json({ msg: "Server error", error: error.message });
+    //   }
+    // });
+
+
+// ✅ Route to Add Bulk Label History
+router.post("/add-bulk-label-history/:userid", async (req, res) => {
+  try {
+    // ✅ Check Authorization Header
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+      return res.status(401).json({ msg: "Authorization header missing" });
+    }
+
+    // ✅ Extract & Verify JWT Token
+    const token = authHeader.split(" ")[1];
+    if (!token) {
+      return res.status(401).json({ msg: "Token is missing" });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const userId = decoded.userId;
+    const paramUserId = req.params.userid;
+
+    console.log("Decoded user ID:", userId);
+    console.log("Requested user ID:", paramUserId);
+
+    // ✅ Ensure User is Updating Their Own Data
+    if (userId !== paramUserId) {
+      return res.status(403).json({ msg: "Unauthorized access" });
+    }
+
+    // ✅ Find the User
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ msg: "User not found" });
+
+    // ✅ Validate Labels Array
+    const { labels } = req.body;
+    if (!Array.isArray(labels) || labels.length === 0) {
+      return res.status(400).json({ msg: "No label data provided" });
+    }
+
+    // ✅ Prepare Bulk Insert Data
+    const formattedLabels = labels.map(label => ({
+      carrier: label.carrier,
+      trackingNumber: label.trackingNumber,
+      labelType: label.labelType,
+      vendor: label.vendor,
+      weight: label.weight,
+      height: label.height,
+      width: label.width,
+      length: label.length,
+      senderName: label.senderName,
+      senderAddress: label.senderAddress,
+      senderCity: label.senderCity,
+      senderState: label.senderState,
+      senderZip: label.senderZip,
+      recipientName: label.recipientName,
+      recipientAddress: label.recipientAddress,
+      recipientCity: label.recipientCity,
+      recipientState: label.recipientState,
+      recipientZip: label.recipientZip,
+      barcodeImg: label.barcodeImg,
+      generatedAt: new Date(),
+    }));
+
+    // ✅ Efficiently Push Labels Using `$push` in Bulk
+    const bulkUpdate = {
+      updateOne: {
+        filter: { _id: userId },
+        update: {
+          $push: {
+            bulkLabelHistory: {
+              labels: formattedLabels,
+              generatedAt: new Date(),
+            },
+          },
+        },
+      },
+    };
+
+    const bulkResult = await User.bulkWrite([bulkUpdate]);
+    console.log('history upate')
+
+    // ✅ Response
+    return res.json({
+      msg: "Bulk label history updated successfully",
+      modifiedCount: bulkResult.modifiedCount,
     });
+
+  } catch (error) {
+    console.error("❌ Server error:", error);
+    return res.status(500).json({ msg: "Server error", error: error.message });
+  }
+});
+
+module.exports = router;
+
+    
+    
+    
     router.get("/label-history/:userid", async (req, res) => {
       try {
         // Check for the authorization header
