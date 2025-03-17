@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 const LabelSchema = new mongoose.Schema({
   carrier: { type: String},
-  trackingNumber: { type: String, required: true },
+  trackingNumber: { type: String},
   labelType: { type: String, required: true },
   vendor: { type: String, required: true },
   weight: { type: Number },
