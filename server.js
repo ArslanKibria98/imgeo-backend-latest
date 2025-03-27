@@ -10,8 +10,13 @@ app.use(express.json({ limit: "50mb" }));  // Adjust based on your needs
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
 // CORS Configuration
+// const corsOptions = {
+//   origin: process.env.FRONTEND_URL || "http://localhost:3000", // Allow only specific origin
+//   methods: "GET,POST,PUT,DELETE", // Allowed HTTP methods
+//   allowedHeaders: "Content-Type,Authorization", // Allowed headers
+// };
 const corsOptions = {
-  origin: process.env.FRONTEND_URL || "https://shiplabelpro.com", // Allow only specific origin
+  origin: "*", // Allow all origins
   methods: "GET,POST,PUT,DELETE", // Allowed HTTP methods
   allowedHeaders: "Content-Type,Authorization", // Allowed headers
 };
@@ -36,7 +41,7 @@ mongoose
     useNewUrlParser: true,
     useUnifiedTopology: true,
   })
-  .then(() => console.log("✅ Connected to MongoDB"))
+  .then(() => console.log(process.env.MONGO_URI, "✅ Connected to MongoDB"))
   .catch((err) => console.error("❌ MongoDB Connection Error:", err));
 
 // Serve Static Files (React Build)
@@ -46,8 +51,8 @@ app.use(express.static(path.join(__dirname, "build")));
 
 // Ensure React handles routing
 app.get("*", (req, res, next) => {
-    if (req.path.startsWith("/api")) return next(); // Don't interfere with API routes
-    res.sendFile(path.resolve(__dirname, "build", "index.html"));
+  if (req.path.startsWith("/api")) return next(); // Don't interfere with API routes
+  res.sendFile(path.resolve(__dirname, "build", "index.html"));
 });
 
 

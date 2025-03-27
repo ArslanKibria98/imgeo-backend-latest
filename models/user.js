@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 const LabelSchema = new mongoose.Schema({
-  carrier: { type: String},
-  trackingNumber: { type: String},
+  carrier: { type: String },
+  trackingNumber: { type: String },
   labelType: { type: String, required: true },
   vendor: { type: String, required: true },
   weight: { type: Number },
@@ -18,7 +18,7 @@ const LabelSchema = new mongoose.Schema({
   recipientCity: { type: String },
   recipientState: { type: String },
   recipientZip: { type: String },
-  barcodeImg:{type:String},
+  barcodeImg: { type: String },
   generatedAt: { type: Date, default: Date.now }
 });
 const BulkLabelSchema = new mongoose.Schema({
@@ -35,7 +35,7 @@ const AllowedCarrierSchema = new mongoose.Schema({
   carrier: { type: String, required: true },
   allowedVendors: { type: [String], default: [] },
   labelStats: { type: LabelStatsSchema, default: {} },
-  status: {type:Boolean, default:false}
+  status: { type: Boolean, default: false }
   // list of allowed vendor names for that carrier
 }, { _id: false });
 
@@ -55,12 +55,21 @@ const AllowedCarrierSchema = new mongoose.Schema({
 
 const UserSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
-  email: { type: String, required: true,trim: true ,sparse: true },
+  email: { type: String, required: true, trim: true, sparse: true },
   password: { type: String, required: true },
   availableBalance: { type: Number, default: 0 },
-  rate :{type: Number, default: 5},
+  rate: { type: Number, default: 5 },
   totalGeneratedLabels: { type: Number, default: 0 },
-  totalDeposit:{type:Number, default:0},
+  totalDeposit: { type: Number, default: 0 },
+  balanceHistory: [
+    {
+      previousBalance: { type: Number, required: true },
+      newBalance: { type: Number, required: true },
+      totalDeposit: { type: Number, required: true },
+      status: { type: String, enum: ["paid", "unpaid"], default: "unpaid" },
+      updatedAt: { type: Date, default: Date.now },
+    },
+  ],
   isBlocked: { type: Boolean, default: false },
   isDealer: { type: Boolean, default: false },
   // For single label generation:
@@ -69,9 +78,11 @@ const UserSchema = new mongoose.Schema({
   labelStats: { type: LabelStatsSchema, default: {} },
   // For bulk label generation, each bulk event stores an array of labels:
   labelHistory: { type: [LabelSchema], default: [] },
-  bulkLabelHistory: { type: [BulkLabelSchema],      
+  bulkLabelHistory: {
+    type: [BulkLabelSchema],
     excelContentType: String,
-    generatedAt: Date,  default: [] }
+    generatedAt: Date, default: []
+  }
 }, { timestamps: true });
 
 module.exports = mongoose.model("User", UserSchema);
