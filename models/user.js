@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const LabelSchema = new mongoose.Schema({
+  fileName: { type: String },
   carrier: { type: String },
   trackingNumber: { type: String },
   labelType: { type: String, required: true },

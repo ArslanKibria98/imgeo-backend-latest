@@ -533,6 +533,7 @@ router.post("/add-bulk-label-history/:userid", async (req, res) => {
 
     // ✅ Prepare Bulk Insert Data
     const formattedLabels = labels.map(label => ({
+      fileName: label.fileName,
       carrier: label.carrier,
       trackingNumber: label.trackingNumber,
       labelType: label.labelType,
