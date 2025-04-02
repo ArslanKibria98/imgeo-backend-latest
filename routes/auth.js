@@ -93,7 +93,7 @@ router.post("/login", async (req, res) => {
     // Validate password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(400).json({ msg: "Invalid credentials" });
-
+    const totalBulkLabels = user.bulkLabelHistory.reduce((sum, bulk) => sum + bulk.labels.length, 0);
     // Generate JWT Token
     const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: "5h" });
     const userData = {
@@ -105,7 +105,7 @@ router.post("/login", async (req, res) => {
       totalDeposit: user.totalDeposit,
       isBlocked: user.isBlocked,
       labelHistory: user.labelHistory.length,
-      bulkLabelHistory: user.bulkLabelHistory.length,
+      bulkLabelHistory: totalBulkLabels,
       totalGeneratedLabels: user.totalGeneratedLabels
       // Include other relevant user data as needed
     };
