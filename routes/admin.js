@@ -692,3 +692,5 @@ router.get('/set/barcode', async (req, res) => {
 });
 
 module.exports = router;
+
+
