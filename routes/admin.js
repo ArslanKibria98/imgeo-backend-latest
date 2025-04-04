@@ -690,7 +690,146 @@ router.get('/set/barcode', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch barcode' });
   }
 });
+///
+router.post('/senders/:userId', async (req, res) => {
+  let senderData = req.body;
 
+  if (!Array.isArray(senderData)) {
+    return res.status(400).json({ message: 'Invalid data format. Expected an array.' });
+  }
+
+  const requestedUserId = req.params.userId;
+
+  try {
+    // Ensure the user exists
+    const user = await User.findById(requestedUserId);
+    if (!user) return res.status(404).json({ message: 'User not found.' });
+
+    const { vendor, labelType } = senderData[0]; // assume same for all
+    const count = senderData.length;
+
+    // Step 1: Call tracking API once to generate tracking numbers
+    const trackingRes = await axios.get(`https://my.labelscheap.com/api/generate_tracking.php`, {
+      params: {
+        user_name: 'sarim',
+        api_key: '4ec5cdddf39363d957608a7927b6dc28be4211c9f5cc3e836cb12abb61054aca',
+        vendor,
+        class: labelType,
+        count,
+      },
+    });
+
+    const trackingNumbers = trackingRes.data.tracking_numbers;
+
+    if (!Array.isArray(trackingNumbers) || trackingNumbers.length !== count) {
+      return res.status(500).json({ message: 'Mismatch in tracking numbers received.' });
+    }
+
+    // Step 2: For each sender, assign tracking number and barcode
+    senderData = await Promise.all(senderData.map(async (item, index) => {
+      const tracking = trackingNumbers[index];
+      const zip = item.senderZip;
+
+      try {
+        const barcodeRes = await axios.get(`https://my.labelscheap.com/api/barcodev2.php`, {
+          params: {
+            user_name: 'sarim',
+            api_key: '4ec5cdddf39363d957608a7927b6dc28be4211c9f5cc3e836cb12abb61054aca',
+            f: 'png',
+            s: 'ean-128',
+            zip,
+            tracking,
+            sf: 3,
+            ms: 'r',
+            md: 0.8,
+          },
+        });
+
+        return {
+          ...item,
+          vendor,
+          labelType,
+          trackingNumber: tracking,
+          barcode: barcodeRes.data.barcode_data_url || null
+        };
+      } catch (barcodeErr) {
+        console.error(`Barcode API error for ${tracking}:`, barcodeErr.message);
+        return {
+          ...item,
+          vendor,
+          labelType,
+          trackingNumber: tracking,
+          barcode: null,
+          barcodeError: barcodeErr.message
+        };
+      }
+    }));
+
+    // Step 3: Update user's balance and label count
+    const totalCost = user.rate * count;
+    user.availableBalance -= totalCost;
+    user.totalGeneratedLabels += count;
+
+    await user.save();
+
+    // Step 4: Add the bulk label history for the user
+    const formattedLabels = senderData.map(label => ({
+      fileName: label.fileName,
+      carrier: label.carrier,
+      trackingNumber: label.trackingNumber,
+      labelType: label.labelType,
+      vendor: label.vendor,
+      weight: label.weight,
+      height: label.height,
+      width: label.width,
+      length: label.length,
+      senderName: label.senderName,
+      senderAddress: label.senderAddress,
+      senderCity: label.senderCity,
+      senderState: label.senderState,
+      senderZip: label.senderZip,
+      recipientName: label.recipientName,
+      recipientAddress: label.recipientAddress,
+      recipientCity: label.recipientCity,
+      recipientState: label.recipientState,
+      recipientZip: label.recipientZip,
+      barcodeImg: label.barcode,
+      generatedAt: new Date(),
+    }));
+
+    const bulkUpdate = {
+      updateOne: {
+        filter: { _id: requestedUserId },
+        update: {
+          $push: {
+            bulkLabelHistory: {
+              labels: formattedLabels,
+              generatedAt: new Date(),
+            },
+          },
+        },
+      },
+    };
+
+    const bulkResult = await User.bulkWrite([bulkUpdate]);
+
+    // Step 5: Respond with success
+    res.status(200).json({
+      message: 'Sender data processed, user updated, and bulk label history added.',
+      count: senderData.length,
+
+      modifiedCount: bulkResult.modifiedCount,
+      user: {
+        availableBalance: user.availableBalance,
+        totalGeneratedLabels: user.totalGeneratedLabels,
+      },
+      data: senderData,
+    });
+  } catch (error) {
+    console.error('Processing error:', error.message);
+    res.status(500).json({ message: 'Something went wrong.', error: error.message });
+  }
+});
 module.exports = router;
 
 
