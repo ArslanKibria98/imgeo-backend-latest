@@ -726,7 +726,10 @@ router.post('/senders/:userId', async (req, res) => {
     }
 
     // Step 2: For each sender, assign tracking number and barcode
-    senderData = await Promise.all(senderData.map(async (item, index) => {
+    const updatedSenderData = [];
+
+    for (let index = 0; index < senderData.length; index++) {
+      const item = senderData[index];
       const tracking = trackingNumbers[index];
       const zip = item.senderZip;
 
@@ -745,25 +748,27 @@ router.post('/senders/:userId', async (req, res) => {
           },
         });
 
-        return {
+        const barcode = barcodeRes.data.barcode_data_url;
+        // console.log(barcode, "barcode");
+
+        if (!barcode) {
+          throw new Error(`Barcode not generated for tracking number ${zip}, ${tracking}`);
+        }
+
+        updatedSenderData.push({
           ...item,
           vendor,
           labelType,
           trackingNumber: tracking,
-          barcode: barcodeRes.data.barcode_data_url || null
-        };
+          barcode,
+        });
       } catch (barcodeErr) {
-        console.error(`Barcode API error for ${tracking}:`, barcodeErr.message);
-        return {
-          ...item,
-          vendor,
-          labelType,
-          trackingNumber: tracking,
-          barcode: null,
-          barcodeError: barcodeErr.message
-        };
+        throw new Error(`Barcode generation failed for tracking number ${tracking}: ${barcodeErr.message}`);
       }
-    }));
+    }
+
+    senderData = updatedSenderData;
+
 
     // Step 3: Update user's balance and label count
     const totalCost = user.rate * count;
