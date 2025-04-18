@@ -141,6 +141,50 @@ router.get("/users", authMiddleware, async (req, res) => {
   }
 });
 
+/// dealer users
+// GET /dealer/:userId/sub-users
+router.get("/dealer/:userId/sub-users", async (req, res) => {
+  const { userId } = req.params;
+  let { page = 1, limit = 10 } = req.query;
+
+  try {
+    const dealer = await User.findById(userId).lean();
+    if (!dealer || !dealer.isDealer) {
+      return res.status(403).json({ msg: "Access denied: Not a dealer" });
+    }
+
+    page = Math.max(1, parseInt(page));
+    limit = Math.max(1, Math.min(100, parseInt(limit)));
+
+    const subUsers = dealer.subUsers || [];
+
+    const totalUsers = subUsers.length;
+    const totalPages = Math.ceil(totalUsers / limit);
+
+    const paginatedSubUsers = subUsers
+      .slice((page - 1) * limit, page * limit)
+      .map(({ password, ...rest }) => rest); // Remove password from response
+
+    const baseUrl = `${req.protocol}://${req.get("host")}${req.baseUrl}/dealer/${userId}/sub-users`;
+    const nextPage = page < totalPages ? `${baseUrl}?page=${page + 1}&limit=${limit}` : null;
+    const prevPage = page > 1 ? `${baseUrl}?page=${page - 1}&limit=${limit}` : null;
+
+    res.status(200).json({
+      success: true,
+      users: paginatedSubUsers,
+      pagination: {
+        totalUsers,
+        totalPages,
+        currentPage: page,
+        nextPage,
+        prevPage,
+      },
+    });
+  } catch (err) {
+    console.error("Dealer sub-user fetch error:", err);
+    res.status(500).json({ msg: "Server error" });
+  }
+});
 
 
 // ✅ 2. Block/Unblock a user
@@ -160,6 +204,46 @@ router.put("/users/:id/status", authMiddleware, async (req, res) => {
   } catch (error) {
     console.error("Error updating user status:", error);
     res.status(500).json({ msg: "Server error" });
+  }
+});
+/// 
+router.put("/dealer/:dealerId/sub-users/:subUserId/status", async (req, res) => {
+  const { dealerId, subUserId } = req.params;
+  const { status } = req.body;
+
+  try {
+    // Check if the dealer exists and the request is coming from the correct dealer
+    const dealer = await User.findById(dealerId);
+    if (!dealer || !dealer.isDealer) {
+      return res.status(403).json({ msg: "Unauthorized" });
+    }
+
+    // Find the sub-user within the dealer's sub-users list
+    const subUser = dealer.subUsers.id(subUserId); // Mongoose method to get sub-user by ID
+    if (!subUser) {
+      return res.status(404).json({ msg: "Sub-user not found" });
+    }
+
+    // Validate the status value
+    if (typeof status !== "boolean") {
+      return res.status(400).json({ msg: "Invalid status. Status must be a boolean value." });
+    }
+
+    // Update the sub-user's status
+    subUser.isBlocked = status;
+
+    // Save the updated dealer document
+    await dealer.save();
+
+    // Return success response
+    res.status(200).json({
+      msg: "Sub-user status updated successfully",
+      updatedSubUser: subUser,
+    });
+
+  } catch (error) {
+    console.error("Error updating sub-user status:", error);
+    res.status(500).json({ msg: "Server error", error: error.message });
   }
 });
 
@@ -193,6 +277,36 @@ router.delete("/users/:id", authMiddleware, async (req, res) => {
   }
 });
 
+// delete dealer user
+// DELETE /dealer/:dealerId/sub-users/:subUserId
+router.delete("/dealer/:dealerId/sub-users/:subUserId", async (req, res) => {
+  const { dealerId, subUserId } = req.params;
+
+  try {
+    const dealer = await User.findById(dealerId);
+    if (!dealer || !dealer.isDealer) {
+      return res.status(403).json({ msg: "Access denied: Not a dealer" });
+    }
+
+    // Find the index of the sub-user with the given ID
+    const subUserIndex = dealer.subUsers.findIndex(
+      (sub) => sub._id.toString() === subUserId
+    );
+
+    if (subUserIndex === -1) {
+      return res.status(404).json({ msg: "Sub-user not found" });
+    }
+
+    // Remove the sub-user
+    dealer.subUsers.splice(subUserIndex, 1);
+    await dealer.save();
+
+    res.status(200).json({ msg: "Sub-user deleted successfully" });
+  } catch (err) {
+    console.error("Delete sub-user error:", err);
+    res.status(500).json({ msg: "Server error" });
+  }
+});
 
 // ✅ 3. Increase/Decrease user balance
 router.put("/users/:id/balance", authMiddleware, async (req, res) => {
@@ -246,6 +360,72 @@ router.put("/users/:id/balance", authMiddleware, async (req, res) => {
     res.status(500).json({ msg: "Server error" });
   }
 });
+/// dealer user balance update
+// PUT /dealer/:dealerId/sub-users/:subUserId/balance
+router.put("/dealer/:dealerId/sub-users/:subUserId/balance", async (req, res) => {
+  const { dealerId, subUserId } = req.params;
+
+  try {
+    // Check if the user is a dealer and if they are updating their own sub-user
+    const dealer = await User.findById(dealerId);
+    if (!dealer || !dealer.isDealer) {
+      return res.status(403).json({ msg: "Unauthorized" });
+    }
+
+    // Ensure dealer has a subUsers array
+    if (!dealer.subUsers || !Array.isArray(dealer.subUsers)) {
+      return res.status(404).json({ msg: "Dealer has no sub-users" });
+    }
+
+    // Find the sub-user within the dealer's sub-users list
+    const subUser = dealer.subUsers.id(subUserId); // This uses Mongoose's internal method to find the sub-user by ID
+    if (!subUser) {
+      return res.status(404).json({ msg: "Sub-user not found" });
+    }
+
+    // Extract availableBalance and totalDeposit from the request body
+    const { availableBalance, totalDeposit } = req.body;
+
+    // Validate input
+    if (typeof availableBalance !== "number" || typeof totalDeposit !== "number") {
+      return res.status(400).json({ msg: "Invalid input. Both availableBalance and totalDeposit must be numbers." });
+    }
+
+    // Determine status: "paid" or "unpaid"
+    const status = availableBalance >= totalDeposit ? "paid" : "unpaid";
+
+    // Store previous balance before updating
+    const previousBalance = subUser.availableBalance;
+
+    // Update sub-user balance and push balance history
+    subUser.availableBalance = availableBalance;
+    subUser.totalDeposit = totalDeposit;
+    subUser.balanceHistory.push({
+      previousBalance,
+      newBalance: availableBalance,
+      totalDeposit,
+      status,
+      updatedAt: new Date(),
+    });
+
+    // Save the updated dealer document
+    await dealer.save();
+
+    // Return success response
+    res.status(200).json({
+      msg: "Sub-user balance and total deposit updated successfully",
+      updatedSubUser: subUser,
+    });
+
+  } catch (error) {
+    console.error("Error updating sub-user balance and total deposit:", error);
+    res.status(500).json({ msg: "Server error", error: error.message });
+  }
+});
+
+
+
+
 
 router.put("/users/:id/balance-history/:entryId", authMiddleware, async (req, res) => {
   try {
@@ -311,6 +491,35 @@ router.get("/users/:id/balance-history", authMiddleware, async (req, res) => {
     res.status(500).json({ msg: "Server error" });
   }
 });
+router.get("/dealer/:dealerId/sub-user/:subUserId/balance-history", async (req, res) => {
+  try {
+    const { dealerId, subUserId } = req.params;
+
+    // Find the dealer user and ensure they are a dealer
+    const dealer = await User.findById(dealerId);
+    // if (!dealer || !dealer.isDealer) {
+    //   return res.status(403).json({ msg: "Unauthorized dealer access" });
+    // }
+
+    // Find the sub-user under the dealer
+    const subUser = dealer.subUsers.id(subUserId);
+    if (!subUser) {
+      return res.status(404).json({ msg: "Sub-user not found under this dealer" });
+    }
+
+    // Return balance and label history
+    res.status(200).json({
+      msg: "Balance and label history retrieved successfully",
+      balanceHistory: subUser.balanceHistory || [],
+      labelHistory: subUser.labelHistory || [],
+      bulkLabelHistory: subUser.bulkLabelHistory || [],
+    });
+
+  } catch (error) {
+    console.error("Error fetching sub-user balance history:", error);
+    res.status(500).json({ msg: "Server error" });
+  }
+});
 
 router.get("/users/total-balance-per-day", authMiddleware, async (req, res) => {
   try {
@@ -365,6 +574,64 @@ router.get("/users/total-balance-per-day", authMiddleware, async (req, res) => {
     res.status(500).json({ msg: "Server error" });
   }
 });
+// GET /dealer/:dealerId/sub-users/total-balance-per-day
+router.get("/dealer/:dealerId/sub-users/total-balance-per-day", async (req, res) => {
+  try {
+    const { dealerId } = req.params;
+    const { startDate, endDate } = req.query;
+
+    if (!dealerId) {
+      return res.status(400).json({ msg: "Dealer ID is required" });
+    }
+
+    if (!startDate || !endDate) {
+      return res.status(400).json({ msg: "Start date and end date are required" });
+    }
+
+    // if (!mongoose.Types.ObjectId.isValid(dealerId)) {
+    //   return res.status(400).json({ msg: "Invalid dealer ID format" });
+    // }
+
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+
+    const dealer = await User.findById(dealerId).lean();
+    if (!dealer || !dealer.isDealer) {
+      return res.status(404).json({ msg: "Dealer not found or not a dealer" });
+    }
+
+    const balanceData = [];
+
+    for (const sub of dealer.subUsers || []) {
+      for (const entry of sub.balanceHistory || []) {
+        const entryDate = new Date(entry.updatedAt);
+        if (entryDate >= start && entryDate <= end) {
+          const dateKey = entryDate.toISOString().split("T")[0];
+          balanceData.push({ date: dateKey, newBalance: entry.newBalance });
+        }
+      }
+    }
+
+    const grouped = balanceData.reduce((acc, { date, newBalance }) => {
+      acc[date] = (acc[date] || 0) + newBalance;
+      return acc;
+    }, {});
+
+    const result = Object.entries(grouped)
+      .map(([date, totalBalance]) => ({ date, totalBalance }))
+      .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    res.status(200).json({
+      msg: "Dealer sub-user total balance per day retrieved successfully",
+      balancePerDay: result,
+    });
+  } catch (error) {
+    console.error("Error fetching dealer sub-user balance per day:", error);
+    res.status(500).json({ msg: "Server error" });
+  }
+});
+
+
 
 router.post("/upload-shipments", async (req, res) => {
   try {
@@ -473,7 +740,37 @@ router.put("/:userId/carriers", authMiddleware, async (req, res) => {
     res.status(500).json({ msg: "Server Error", error });
   }
 });
+/////
+router.put("/dealer/:dealerId/sub-users/:subUserId/carriers", async (req, res) => {
+  const { dealerId, subUserId } = req.params; // Get dealerId and subUserId from the URL
+  const { allowedCarriers } = req.body; // Get the new allowed carriers from the request body
 
+  try {
+    // Find the dealer by ID
+    const dealer = await User.findById(dealerId);
+    if (!dealer || !dealer.isDealer) {
+      return res.status(403).json({ error: 'Unauthorized. Dealer not found.' });
+    }
+
+    // Find the sub-user within the dealer's sub-users list
+    const subUser = dealer.subUsers.id(subUserId);
+    if (!subUser) {
+      return res.status(404).json({ error: 'Sub-user not found.' });
+    }
+
+    // Update the sub-user's allowed carriers
+    subUser.allowedCarriers = allowedCarriers;
+
+    // Save the dealer document with the updated sub-user
+    await dealer.save();
+
+    // Return the updated sub-user
+    res.json({ message: 'Sub-user allowed carriers updated successfully.', subUser });
+  } catch (error) {
+    console.error('Error updating sub-user allowed carriers:', error);
+    res.status(500).json({ error: 'Failed to update sub-user allowed carriers.' });
+  }
+});
 
 //////////
 router.post("/add-carrier", authMiddleware, async (req, res) => {
@@ -623,6 +920,42 @@ router.put('/:userId/rate', async (req, res) => {
   }
 });
 
+/// dealer
+router.put("/dealer/:dealerId/sub-users/:subUserId/rate", async (req, res) => {
+  const { dealerId, subUserId } = req.params; // Get dealerId and subUserId from the URL
+  const { rate } = req.body; // Get the new rate from the request body
+
+  // Validate the rate
+  if (typeof rate !== 'number' || rate < 0) {
+    return res.status(400).json({ error: 'Invalid rate. Rate must be a non-negative number.' });
+  }
+
+  try {
+    // Find the dealer by ID
+    const dealer = await User.findById(dealerId);
+    if (!dealer || !dealer.isDealer) {
+      return res.status(403).json({ error: 'Unauthorized. Dealer not found.' });
+    }
+
+    // Find the sub-user within the dealer's sub-users list
+    const subUser = dealer.subUsers.id(subUserId);
+    if (!subUser) {
+      return res.status(404).json({ error: 'Sub-user not found.' });
+    }
+
+    // Update the sub-user's rate
+    subUser.rate = rate;
+
+    // Save the dealer document with the updated sub-user
+    await dealer.save();
+
+    // Return the updated sub-user
+    res.json({ message: 'Sub-user rate updated successfully.', subUser });
+  } catch (error) {
+    console.error('Error updating sub-user rate:', error);
+    res.status(500).json({ error: 'Failed to update sub-user rate.' });
+  }
+});
 
 
 
@@ -720,7 +1053,7 @@ router.post('/senders/:userId', async (req, res) => {
     });
 
     const trackingNumbers = trackingRes.data.tracking_numbers;
-
+    console.log(trackingRes, "trackingRes")
     if (!Array.isArray(trackingNumbers) || trackingNumbers.length !== count) {
       return res.status(500).json({ message: 'Mismatch in tracking numbers received.' });
     }
@@ -835,6 +1168,143 @@ router.post('/senders/:userId', async (req, res) => {
     res.status(500).json({ message: 'Something went wrong.', error: error.message });
   }
 });
+//
+router.post('/senders/dealer/:dealerId/sub-user/:subUserId', async (req, res) => {
+  let senderData = req.body;
+
+  if (!Array.isArray(senderData)) {
+    return res.status(400).json({ message: 'Invalid data format. Expected an array.' });
+  }
+
+  const { dealerId, subUserId } = req.params;
+
+  try {
+    // Find dealer
+    const dealer = await User.findById(dealerId);
+    if (!dealer || !dealer.isDealer) {
+      return res.status(403).json({ message: 'Unauthorized dealer access' });
+    }
+
+    // Find sub-user
+    const subUser = dealer.subUsers.id(subUserId);
+    if (!subUser) {
+      return res.status(404).json({ message: 'Sub-user not found under this dealer' });
+    }
+
+    const { vendor, labelType } = senderData[0]; // assume same for all
+    const count = senderData.length;
+
+    // Generate tracking numbers
+    const trackingRes = await axios.get(`https://my.labelscheap.com/api/generate_tracking.php`, {
+      params: {
+        user_name: 'sarim',
+        api_key: '4ec5cdddf39363d957608a7927b6dc28be4211c9f5cc3e836cb12abb61054aca',
+        vendor,
+        class: labelType,
+        count,
+      },
+    });
+
+    const trackingNumbers = trackingRes.data.tracking_numbers;
+    if (!Array.isArray(trackingNumbers) || trackingNumbers.length !== count) {
+      return res.status(500).json({ message: 'Mismatch in tracking numbers received.' });
+    }
+
+    // Assign barcodes
+    const updatedSenderData = [];
+    for (let i = 0; i < senderData.length; i++) {
+      const item = senderData[i];
+      const tracking = trackingNumbers[i];
+      const zip = item.senderZip;
+
+      try {
+        const barcodeRes = await axios.get(`https://my.labelscheap.com/api/barcodev2.php`, {
+          params: {
+            user_name: 'sarim',
+            api_key: '4ec5cdddf39363d957608a7927b6dc28be4211c9f5cc3e836cb12abb61054aca',
+            f: 'png',
+            s: 'ean-128',
+            zip,
+            tracking,
+            sf: 3,
+            ms: 'r',
+            md: 0.8,
+          },
+        });
+
+        const barcode = barcodeRes.data.barcode_data_url;
+        if (!barcode) throw new Error(`Barcode not generated for tracking ${tracking}`);
+
+        updatedSenderData.push({
+          ...item,
+          vendor,
+          labelType,
+          trackingNumber: tracking,
+          barcode,
+        });
+
+      } catch (barcodeErr) {
+        throw new Error(`Barcode generation failed for ${tracking}: ${barcodeErr.message}`);
+      }
+    }
+
+    // Update balance & labels
+    const totalCost = subUser.rate * count;
+    if (subUser.availableBalance < totalCost) {
+      return res.status(400).json({ message: 'Insufficient balance to generate labels' });
+    }
+
+    subUser.availableBalance -= totalCost;
+    subUser.totalGeneratedLabels = (subUser.totalGeneratedLabels || 0) + count;
+
+    // Add to bulk history
+    const formattedLabels = updatedSenderData.map(label => ({
+      fileName: label.fileName,
+      carrier: label.carrier,
+      trackingNumber: label.trackingNumber,
+      labelType: label.labelType,
+      vendor: label.vendor,
+      weight: label.weight,
+      height: label.height,
+      width: label.width,
+      length: label.length,
+      senderName: label.senderName,
+      senderAddress: label.senderAddress,
+      senderCity: label.senderCity,
+      senderState: label.senderState,
+      senderZip: label.senderZip,
+      recipientName: label.recipientName,
+      recipientAddress: label.recipientAddress,
+      recipientCity: label.recipientCity,
+      recipientState: label.recipientState,
+      recipientZip: label.recipientZip,
+      barcodeImg: label.barcode,
+      generatedAt: new Date(),
+    }));
+
+    subUser.bulkLabelHistory.push({
+      labels: formattedLabels,
+      generatedAt: new Date(),
+    });
+
+    await dealer.save();
+
+    res.status(200).json({
+      message: 'Sender data processed, sub-user updated, and bulk label history added.',
+      count: updatedSenderData.length,
+      user: {
+        availableBalance: subUser.availableBalance,
+        totalGeneratedLabels: subUser.totalGeneratedLabels,
+      },
+      data: updatedSenderData,
+    });
+
+  } catch (error) {
+    console.error('Processing error:', error.message);
+    res.status(500).json({ message: 'Something went wrong.', error: error.message });
+  }
+});
+
 module.exports = router;
 
 

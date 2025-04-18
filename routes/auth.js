@@ -54,6 +54,33 @@ router.get("/allowed-carriers/:userId", async (req, res) => {
   }
 });
 
+///
+router.get("/dealer/:dealerId/sub-users/:subUserId/allowed-carriers", async (req, res) => {
+  try {
+    const { dealerId, subUserId } = req.params;
+
+    // Find the dealer
+    const dealer = await User.findById(dealerId);
+    if (!dealer || !dealer.isDealer) {
+      return res.status(403).json({ msg: "Unauthorized dealer access" });
+    }
+
+    // Find the sub-user under the dealer
+    const subUser = dealer.subUsers.id(subUserId);
+    if (!subUser) {
+      return res.status(404).json({ msg: "Sub-user not found under this dealer" });
+    }
+
+    // Filter allowed carriers where status is true
+    const allowedCarriers = (subUser.allowedCarriers || []).filter(carrier => carrier.status === true);
+
+    res.json(allowedCarriers);
+
+  } catch (error) {
+    console.error("Error fetching allowed carriers for sub-user:", error);
+    res.status(500).json({ msg: "Server Error", error: error.message });
+  }
+});
 
 // ✅ User Signup Route
 router.post("/signup", async (req, res) => {
@@ -79,23 +106,110 @@ router.post("/signup", async (req, res) => {
     res.status(500).json({ msg: "Server error" });
   }
 });
+///// dealer allow to make users
+// POST /dealer/add-subuser
+router.post("/dealer/:userId/add-subuser", async (req, res) => {
+  const { userId } = req.params;
+  const { name, email, password, rate } = req.body;
+
+  try {
+    const dealer = await User.findById(userId);
+    if (!dealer || !dealer.isDealer) {
+      return res.status(403).json({ msg: "Unauthorized: Not a dealer" });
+    }
+
+    const lowerEmail = email.toLowerCase();
+
+    // Check if a sub-user with this email already exists under the dealer
+    const emailExists = dealer.subUsers.some(
+      (sub) => sub.email.toLowerCase() === lowerEmail
+    );
+    if (emailExists) {
+      return res.status(400).json({ msg: "Sub-user email already exists" });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    dealer.subUsers.push({
+      name,
+      email: lowerEmail,
+      password: hashedPassword,
+      rate,
+    });
+
+    await dealer.save();
+
+    res.status(201).json({ msg: "Sub-user added successfully" });
+  } catch (err) {
+    console.error("Add sub-user error:", err);
+    res.status(500).json({ msg: "Server error" });
+  }
+});
+
+
+
+
 
 // ✅ User Login Route
 router.post("/login", async (req, res) => {
-  var { email, password } = req.body;
+  let { email, password } = req.body;
 
   try {
     email = email.toLowerCase();
-    // Check if the user exists
-    const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ msg: "Invalid credentials" });
 
-    // Validate password
+    // First, try to find as a dealer or top-level user
+    let user = await User.findOne({ email });
+
+    // If not found as top-level, search all dealers for sub-user
+    if (!user) {
+      const dealers = await User.find({ isDealer: true });
+
+      for (const dealer of dealers) {
+        const subUser = dealer.subUsers.find(sub => sub.email === email);
+
+        if (subUser) {
+          const isMatch = await bcrypt.compare(password, subUser.password);
+          if (!isMatch) return res.status(400).json({ msg: "Invalid credentials" });
+
+          // Create token for sub-user
+          const token = jwt.sign(
+            { dealerId: dealer._id, subUserId: subUser._id },
+            JWT_SECRET,
+            { expiresIn: "5h" }
+          );
+          const totalBulkLabelsDealer = subUser.bulkLabelHistory.reduce((sum, bulk) => sum + bulk.labels.length, 0);
+          const userData = {
+            id: subUser._id,
+            dealerId: dealer._id,
+            name: subUser.name,
+            email: subUser.email,
+            rate: subUser.rate,
+            availableBalance: subUser.availableBalance,
+            totalDeposit: subUser.totalDeposit,
+            isDealer: false,
+            isBlocked: subUser.isBlocked,
+            labelHistory: subUser.labelHistory.length,
+            bulkLabelHistory: totalBulkLabelsDealer,
+            totalGeneratedLabels: subUser.totalGeneratedLabels,
+            role: "sub-user"
+          };
+
+          return res.json({ token, userData });
+        }
+      }
+
+      return res.status(400).json({ msg: "Invalid credentials" });
+    }
+
+    // Validate password for top-level user
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(400).json({ msg: "Invalid credentials" });
+
     const totalBulkLabels = user.bulkLabelHistory.reduce((sum, bulk) => sum + bulk.labels.length, 0);
-    // Generate JWT Token
+
+    // Create token for dealer or top-level user
     const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: "5h" });
+
     const userData = {
       id: user._id,
       rate: user.rate,
@@ -104,18 +218,21 @@ router.post("/login", async (req, res) => {
       availableBalance: user.availableBalance,
       totalDeposit: user.totalDeposit,
       isBlocked: user.isBlocked,
+      isDealer: user.isDealer || false,
       labelHistory: user.labelHistory.length,
       bulkLabelHistory: totalBulkLabels,
-      totalGeneratedLabels: user.totalGeneratedLabels
-      // Include other relevant user data as needed
+      totalGeneratedLabels: user.totalGeneratedLabels,
+      role: user.isDealer ? "dealer" : "user"
     };
-    console.log(userData, "test123")
-    // Send token and user data in response
+
     res.json({ token, userData });
+
   } catch (err) {
+    console.error("Login error:", err);
     res.status(500).json({ msg: "Server error" });
   }
 });
+
 
 /// update password
 
@@ -198,6 +315,49 @@ router.put("/update-password", async (req, res) => {
   } catch (error) {
     console.error("Error updating password:", error);
     res.status(500).json({ msg: "Server error" });
+  }
+});
+router.put("/update-password/dealer/:dealerId/:subUserId", async (req, res) => {
+  try {
+    const { dealerId, subUserId } = req.params; // Get dealerId and subUserId from params
+    const { oldPassword, newPassword } = req.body;
+
+    // Validate inputs
+    if (!dealerId || !subUserId || !newPassword) {
+      return res.status(400).json({ msg: "Dealer ID, Sub-User ID and new password are required" });
+    }
+
+    // Fetch dealer
+    const dealer = await User.findById(dealerId);
+    if (!dealer || !dealer.isDealer) {
+      return res.status(403).json({ msg: "Unauthorized dealer access" });
+    }
+
+    // Find sub-user
+    const subUser = dealer.subUsers.id(subUserId);
+    if (!subUser) {
+      return res.status(404).json({ msg: "Sub-user not found under this dealer" });
+    }
+
+    // If oldPassword is provided, validate it
+    if (oldPassword) {
+      const isMatch = await bcrypt.compare(oldPassword, subUser.password);
+      if (!isMatch) {
+        return res.status(400).json({ msg: "Old password is incorrect" });
+      }
+    }
+
+    // Hash new password and save
+    const salt = await bcrypt.genSalt(10);
+    subUser.password = await bcrypt.hash(newPassword, salt);
+
+    await dealer.save();
+
+    return res.status(200).json({ msg: "Sub-user password updated successfully" });
+
+  } catch (error) {
+    console.error("Error updating sub-user password:", error);
+    return res.status(500).json({ msg: "Server error", error: error.message });
   }
 });
 
@@ -365,6 +525,72 @@ router.put("/generate-label/:userid", async (req, res) => {
     return res.status(500).json({ msg: "Server error", error: error.message });
   }
 });
+////
+
+router.put("/dealer/:dealerId/sub-users/:subUserId/generate-label", async (req, res) => {
+  try {
+    const { dealerId, subUserId } = req.params;
+
+    // Find the dealer
+    const dealer = await User.findById(dealerId);
+    if (!dealer || !dealer.isDealer) {
+      return res.status(403).json({ msg: "Unauthorized dealer access" });
+    }
+
+    // Find the sub-user
+    const subUser = dealer.subUsers.id(subUserId);
+    if (!subUser) {
+      return res.status(404).json({ msg: "Sub-user not found under this dealer" });
+    }
+
+    // Check if sub-user has enough balance
+    if (subUser.availableBalance < subUser.rate) {
+      return res.status(400).json({ msg: "Insufficient balance to generate label" });
+    }
+
+    // Deduct balance and add to generated total
+    subUser.availableBalance -= subUser.rate;
+    subUser.totalGeneratedLabels = (subUser.totalGeneratedLabels || 0) + subUser.rate;
+
+    // Add to labelHistory
+    subUser.labelHistory.push({
+      carrier: req.body.carrier,
+      trackingNumber: req.body.trackingNumber,
+      labelType: req.body.labelType,
+      vendor: req.body.vendor,
+      weight: req.body.weight,
+      length: req.body.length,
+      width: req.body.width,
+      height: req.body.height,
+      senderName: req.body.senderName,
+      senderAddress: req.body.senderAddress,
+      senderCity: req.body.senderCity,
+      senderState: req.body.senderState,
+      senderZip: req.body.senderZip,
+      recipientName: req.body.recipientName,
+      recipientAddress: req.body.recipientAddress,
+      recipientCity: req.body.recipientCity,
+      recipientState: req.body.recipientState,
+      recipientZip: req.body.recipientZip,
+      barcodeImg: req.body.barcodeImg,
+      generatedAt: new Date()
+    });
+
+    await dealer.save();
+
+    return res.json({
+      msg: "Label generated successfully",
+      availableBalance: subUser.availableBalance,
+      totalGeneratedLabels: subUser.totalGeneratedLabels,
+      labelHistory: subUser.labelHistory
+    });
+
+  } catch (error) {
+    console.error("Server error:", error);
+    return res.status(500).json({ msg: "Server error", error: error.message });
+  }
+});
+
 router.put("/bulk-generate-label/:userid", async (req, res) => {
   try {
     console.log("Headers received:", req.headers);
@@ -624,6 +850,57 @@ router.get("/label-history/:userid", async (req, res) => {
     res.status(500).json({ msg: "Server error", error: error.message });
   }
 });
+
+
+////
+
+router.get("/dealer/:dealerId/label-history/:subUserId", async (req, res) => {
+  try {
+    const { dealerId, subUserId } = req.params;
+
+    // Check for the authorization header
+    // const authHeader = req.headers.authorization;
+    // if (!authHeader) {
+    //   return res.status(401).json({ msg: "Authorization header missing" });
+    // }
+
+    // // Extract and verify the token
+    // const token = authHeader.split(" ")[1];
+    // if (!token) {
+    //   return res.status(401).json({ msg: "Token is missing" });
+    // }
+
+    // const decoded = jwt.verify(token, JWT_SECRET);
+
+    // // Validate dealer authorization
+    // if (decoded.userId !== dealerId) {
+    //   return res.status(403).json({ msg: "Unauthorized dealer access" });
+    // }
+
+    // Find dealer
+    const dealer = await User.findById(dealerId);
+    if (!dealer || !dealer.isDealer) {
+      return res.status(404).json({ msg: "Dealer not found or not authorized" });
+    }
+
+    // Find sub-user in dealer's subUsers array
+    const subUser = dealer.subUsers.id(subUserId);
+    if (!subUser) {
+      return res.status(404).json({ msg: "Sub-user not found" });
+    }
+
+    // Return sub-user's label history
+    res.json({
+      labelHistory: subUser.labelHistory || [],
+      bulkLabelHistory: subUser.bulkLabelHistory || [],
+    });
+
+  } catch (error) {
+    console.error("Server error:", error);
+    res.status(500).json({ msg: "Server error", error: error.message });
+  }
+});
+///
 router.get("/label-history-single/:userid", async (req, res) => {
   try {
     // Check for the authorization header
@@ -661,6 +938,35 @@ router.get("/label-history-single/:userid", async (req, res) => {
     res.status(500).json({ msg: "Server error", error: error.message });
   }
 });
+
+///
+router.get("/dealer/:dealerId/sub-users/:subUserId/label-history-single", async (req, res) => {
+  try {
+    const { dealerId, subUserId } = req.params;
+
+    // Find the dealer
+    const dealer = await User.findById(dealerId);
+    if (!dealer || !dealer.isDealer) {
+      return res.status(403).json({ msg: "Unauthorized dealer access" });
+    }
+
+    // Find the sub-user inside the dealer
+    const subUser = dealer.subUsers.id(subUserId);
+    if (!subUser) {
+      return res.status(404).json({ msg: "Sub-user not found under this dealer" });
+    }
+
+    // Return only labelHistory
+    res.json({
+      labelHistory: subUser.labelHistory
+    });
+
+  } catch (error) {
+    console.error("Server error:", error);
+    res.status(500).json({ msg: "Server error", error: error.message });
+  }
+});
+///
 router.get("/download-bulk-file/:bulkId", async (req, res) => {
   try {
     const user = await User.findOne({

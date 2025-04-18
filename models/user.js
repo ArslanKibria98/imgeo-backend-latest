@@ -26,6 +26,7 @@ const BulkLabelSchema = new mongoose.Schema({
   labels: { type: [LabelSchema], required: true },
   generatedAt: { type: Date, default: Date.now }
 });
+
 const LabelStatsSchema = new mongoose.Schema({
   remaining: { type: Number, default: 0 },
   generated: { type: Number, default: 0 },
@@ -39,7 +40,29 @@ const AllowedCarrierSchema = new mongoose.Schema({
   status: { type: Boolean, default: false }
   // list of allowed vendor names for that carrier
 }, { _id: false });
-
+const SubUserSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  email: { type: String, required: true, trim: true },
+  password: { type: String, required: true },
+  rate: { type: Number, default: 0 },
+  availableBalance: { type: Number, default: 0 },
+  isBlocked: { type: Boolean, default: false },
+  totalDeposit: { type: Number, default: 0 },
+  labelStats: { type: LabelStatsSchema, default: {} },
+  allowedCarriers: { type: [AllowedCarrierSchema], default: [] },
+  balanceHistory: [
+    {
+      previousBalance: { type: Number, required: true },
+      newBalance: { type: Number, required: true },
+      totalDeposit: { type: Number, required: true },
+      status: { type: String, enum: ["paid", "unpaid"], default: "unpaid" },
+      updatedAt: { type: Date, default: Date.now },
+    },
+  ],
+  createdAt: { type: Date, default: Date.now },
+  labelHistory: { type: [LabelSchema], default: [] },
+  bulkLabelHistory: { type: [BulkLabelSchema], default: [] },
+}, { timestamps: true });
 // const SubUserSchema = new mongoose.Schema({
 //   name: { type: String, required: true },
 //   email: { type: String, required: true, trim:true , sparse: true },
@@ -73,6 +96,7 @@ const UserSchema = new mongoose.Schema({
   ],
   isBlocked: { type: Boolean, default: false },
   isDealer: { type: Boolean, default: false },
+  subUsers: { type: [SubUserSchema], default: [] },
   // For single label generation:
   allowedCarriers: { type: [AllowedCarrierSchema], default: [] },
   // subUsers: { type: [SubUserSchema], default: [] },
