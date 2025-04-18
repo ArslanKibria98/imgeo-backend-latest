@@ -81,9 +81,9 @@ router.post(
       const admin = await Admin.findOne({ email });
 
       // Security: Avoid revealing whether email exists
-      // if (!admin || !(await bcrypt.compare(password, admin.password))) {
-      //   return res.status(400).json({ msg: "Invalid email or password" });
-      // }
+      if (!admin || !(await bcrypt.compare(password, admin.password))) {
+        return res.status(400).json({ msg: "Invalid email or password" });
+      }
 
       // Generate JWT token
       const token = jwt.sign(
