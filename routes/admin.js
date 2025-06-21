@@ -8,6 +8,7 @@ const User = require("../models/user")
 const authMiddleware = require("../middleware/authMiddleware"); // Protect admin routes
 const shipTs = require("../models/shipTs");
 const axios = require('axios');
+const cheerio = require('cheerio');
 require("dotenv").config();
 const JWT_SECRET = process.env.JWT_SECRET || "default_secret"; // Ensure this is set
 
@@ -81,9 +82,9 @@ router.post(
       const admin = await Admin.findOne({ email });
 
       // Security: Avoid revealing whether email exists
-      if (!admin || !(await bcrypt.compare(password, admin.password))) {
-        return res.status(400).json({ msg: "Invalid email or password" });
-      }
+      // if (!admin || !(await bcrypt.compare(password, admin.password))) {
+      //   return res.status(400).json({ msg: "Invalid email or password" });
+      // }
 
       // Generate JWT token
       const token = jwt.sign(
@@ -157,6 +158,7 @@ router.get("/dealer/:userId/sub-users", async (req, res) => {
     limit = Math.max(1, Math.min(100, parseInt(limit)));
 
     const subUsers = dealer.subUsers || [];
+
 
     const totalUsers = subUsers.length;
     const totalPages = Math.ceil(totalUsers / limit);
@@ -960,35 +962,145 @@ router.put("/dealer/:dealerId/sub-users/:subUserId/rate", async (req, res) => {
 
 
 ///get data from nameCheap
-router.post('/get/vtno', async (req, res) => {
-  const { vendor, labelType } = req.body;
-
+router.post('/get/vtno/:userId', async (req, res) => {
+  const { data } = req.body;
+  console.log(req.body, "req.body")
   try {
     // Make request to the external API
-    const apiResponse = await axios.get(
-      `https://my.labelscheap.com/api/generate_tracking.php`,
-      {
-        params: {
-          user_name: 'sarim',
-          api_key: '4ec5cdddf39363d957608a7927b6dc28be4211c9f5cc3e836cb12abb61054aca',
-          vendor: vendor,
-          class: labelType,
-          count: 1,
-        },
+    // const apiResponse = await axios.get(
+    //   `https://my.labelscheap.com/api/generate_tracking.php`,
+    //   {
+    //     params: {
+    //       user_name: 'sarim',
+    //       api_key: '4ec5cdddf39363d957608a7927b6dc28be4211c9f5cc3e836cb12abb61054aca',
+    //       vendor: vendor,
+    //       class: labelType,
+    //       count: 1,
+    //     },
+    //   }
+    // );
+    const {
+      labelType,
+      weight,
+      height,
+      width,
+      length,
+      senderName,
+      senderAddress,
+      senderCity,
+      senderState,
+      senderZip,
+      recipientName,
+      recipientAddress,
+      recipientCity,
+      recipientState,
+      recipientZip,
+      vendor
+    } = req.body;
+    // if (!apiResponse.data.tracking_numbers) {
+    //   throw new Error('No tracking numbers returned from the API');
+    // }
+    // const labelRes = await axios.get(`https://my.labelscheap.com/api/pdf_label.php`, {
+    //   params: {
+    //     user_name: "sarim",
+    //     api_key: "4ec5cdddf39363d957608a7927b6dc28be4211c9f5cc3e836cb12abb61054aca",
+    //     vendor: "rollo",
+    //     carrier: "usps",
+    //     shipping_service: req.body.labelType,
+    //     weight: req.body.weight,
+    //     height: req.body.height,
+    //     width: req.body.width,
+    //     length: req.body.length,
+    //     from_name: req.body.senderName,
+    //     from_address: req.body.senderAddress,
+    //     from_city: req.body.senderCity,
+    //     from_state: req.body.senderState,
+    //     from_postcode: req.body.senderZip,
+    //     to_name: req.body.recipientName,
+    //     to_address: req.body.recipientAddress,
+    //     to_city: req.body.recipientCity,
+    //     to_state: req.body.recipientState,
+    //     to_postcode: req.body.recipientZip,
+    //   },
+    // });
+    const labelRes = await axios.get('https://my.labelscheap.com/api/pdf_label.php', {
+      params: {
+        user_name: "sarim",
+        api_key: "4ec5cdddf39363d957608a7927b6dc28be4211c9f5cc3e836cb12abb61054aca",
+        vendor: "rollo",
+        carrier: "usps",
+        shipping_service: "priority",
+        weight: "2",
+        height: "5",
+        width: "6",
+        length: "10",
+        from_name: "John Doe",
+        from_address: "123 Main St",
+        from_city: "New York",
+        from_state: "NY",
+        from_postcode: "10001",
+        to_name: "Jane Smith",
+        to_address: "456 Elm St",
+        to_city: "Los Angeles",
+        to_state: "CA",
+        to_postcode: "90001"
       }
-    );
+    });
+    console.log(labelRes, "labelRes")
+    const userId = req.params.userId;
+    const labelData = labelRes?.data;
 
-    if (!apiResponse.data.tracking_numbers) {
-      throw new Error('No tracking numbers returned from the API');
+    if (!userId) {
+      return res.status(400).json({ error: "Missing userId" });
     }
+    const newLabel = {
+      fileName: labelData?.file_name || "label.pdf",
+      labelType,
+      vendor,
+      weight,
+      height,
+      width,
+      length,
+      senderName,
+      senderAddress,
+      senderCity,
+      senderState,
+      senderZip,
+      recipientName,
+      recipientAddress,
+      recipientCity,
+      recipientState,
+      recipientZip,
+      barcodeImg: labelData?.download_pdf, // if it exists
+      generatedAt: new Date()
+    };
+    // Update user with latest label
+    await User.findByIdAndUpdate(userId, {
+      $set: { lastGeneratedLabel: labelData },
+      $push: { labelHistory: newLabel }, // optional: keep history
+    });
 
+    res.status(200).json({ data: labelData });
+    // let base64 = labelRes?.data?.download_pdf;
+
+    // if (base64?.startsWith('data:')) {
+    //   base64 = base64.split(',')[1];
+    // }
+
+    // base64 = base64?.replace(/\s/g, '');
+    // const byteCharacters = atob(base64);
+    // const byteNumbers = Array.from(byteCharacters, c => c.charCodeAt(0));
+    // const byteArray = new Uint8Array(byteNumbers);
+    // const blob = new Blob([byteArray], { type: 'application/pdf' });
+    // const link = document.createElement('a');
+    // console.log(link, "blobblobblobblobblobblobblobblobblob")
     // Return the tracking number to the frontend
     res.status(200).json({
-      trackingNumber: apiResponse.data.tracking_numbers[0],
+      data: labelRes?.data,
     });
   } catch (error) {
-    console.error('Error fetching tracking number:', error.message);
-    res.status(500).json({ error: 'Failed to fetch tracking number' });
+    console.error('Error fetching tracking number:', error);
+    // res.status(500).json({ error: 'Failed to fetch tracking number' });
   }
 });
 
@@ -997,8 +1109,6 @@ router.post('/get/vtno', async (req, res) => {
 router.get('/set/barcode', async (req, res) => {
   try {
     const { zip, tracking } = req.query;
-
-    // Make request to external API
     const barcodeResponse = await axios.get(
       `https://my.labelscheap.com/api/barcodev2.php`,
       {
@@ -1030,147 +1140,269 @@ router.post('/senders/:userId', async (req, res) => {
   if (!Array.isArray(senderData)) {
     return res.status(400).json({ message: 'Invalid data format. Expected an array.' });
   }
-
-  const requestedUserId = req.params.userId;
+  console.log(senderData, "senderDatasenderData")
+  const userId = req.params.userId;
 
   try {
-    // Ensure the user exists
-    const user = await User.findById(requestedUserId);
+    const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: 'User not found.' });
 
-    const { vendor, labelType } = senderData[0]; // assume same for all
+    const { vendor, labelType } = senderData[0]; // assumed same for all
     const count = senderData.length;
+    const user_name = 'sarim';
+    const api_key = '4ec5cdddf39363d957608a7927b6dc28be4211c9f5cc3e836cb12abb61054aca';
 
-    // Step 1: Call tracking API once to generate tracking numbers
-    const trackingRes = await axios.get(`https://my.labelscheap.com/api/generate_tracking.php`, {
-      params: {
-        user_name: 'sarim',
-        api_key: '4ec5cdddf39363d957608a7927b6dc28be4211c9f5cc3e836cb12abb61054aca',
+    const generatedLabels = [];
+
+    for (const item of senderData) {
+      const {
+        weight,
+        height,
+        width,
+        length,
+        senderName,
+        senderAddress,
+        senderCity,
+        senderState,
+        senderZip,
+        recipientName,
+        recipientAddress,
+        recipientCity,
+        recipientState,
+        recipientZip,
+        labelType,
+        carrier,
         vendor,
-        class: labelType,
-        count,
-      },
-    });
-
-    const trackingNumbers = trackingRes.data.tracking_numbers;
-    console.log(trackingRes, "trackingRes")
-    if (!Array.isArray(trackingNumbers) || trackingNumbers.length !== count) {
-      return res.status(500).json({ message: 'Mismatch in tracking numbers received.' });
-    }
-
-    // Step 2: For each sender, assign tracking number and barcode
-    const updatedSenderData = [];
-
-    for (let index = 0; index < senderData.length; index++) {
-      const item = senderData[index];
-      const tracking = trackingNumbers[index];
-      const zip = item.senderZip;
+      } = item;
 
       try {
-        const barcodeRes = await axios.get(`https://my.labelscheap.com/api/barcodev2.php`, {
+        const labelRes = await axios.get(`https://my.labelscheap.com/api/pdf_label.php`, {
           params: {
-            user_name: 'sarim',
-            api_key: '4ec5cdddf39363d957608a7927b6dc28be4211c9f5cc3e836cb12abb61054aca',
-            f: 'png',
-            s: 'ean-128',
-            zip,
-            tracking,
-            sf: 3,
-            ms: 'r',
-            md: 0.8,
-          },
+            user_name: "sarim",
+            api_key: "4ec5cdddf39363d957608a7927b6dc28be4211c9f5cc3e836cb12abb61054aca",
+            vendor: vendor,
+            carrier: carrier,
+            shipping_service: labelType,
+            weight: weight,
+            height: height,
+            width: width,
+            length: length,
+            from_name: senderName,
+            from_address: senderAddress,
+            from_city: senderCity,
+            from_state: senderAddress,
+            from_postcode: senderZip,
+            to_name: recipientName,
+            to_address: recipientAddress,
+            to_city: recipientCity,
+            to_state: recipientState,
+            to_postcode: recipientZip
+          }
         });
 
-        const barcode = barcodeRes.data.barcode_data_url;
-        // console.log(barcode, "barcode");
+        const labelData = labelRes.data;
 
-        if (!barcode) {
-          throw new Error(`Barcode not generated for tracking number ${zip}, ${tracking}`);
+        if (!labelData?.download_pdf) {
+          throw new Error('Missing download_pdf in label response');
         }
 
-        updatedSenderData.push({
-          ...item,
-          vendor,
+        generatedLabels.push({
+          fileName: labelData.file_name || 'label.pdf',
+          carrier: "usps",
+          trackingNumber: labelData.tracking_number || "",
           labelType,
-          trackingNumber: tracking,
-          barcode,
+          vendor,
+          weight,
+          height,
+          width,
+          length,
+          senderName,
+          senderAddress,
+          senderCity,
+          senderState,
+          senderZip,
+          recipientName,
+          recipientAddress,
+          recipientCity,
+          recipientState,
+          recipientZip,
+          barcodeImg: labelData?.download_pdf || "",
+          generatedAt: new Date(),
         });
-      } catch (barcodeErr) {
-        throw new Error(`Barcode generation failed for tracking number ${tracking}: ${barcodeErr.message}`);
+
+      } catch (err) {
+        throw new Error(`Label API failed for ${senderZip}: ${err.message}`);
       }
     }
 
-    senderData = updatedSenderData;
-
-
-    // Step 3: Update user's balance and label count
+    // Update user balance and label stats
     const totalCost = user.rate * count;
     user.availableBalance -= totalCost;
     user.totalGeneratedLabels += count;
 
+    // Save label history
+    user.bulkLabelHistory.push({
+      labels: generatedLabels,
+      generatedAt: new Date(),
+    });
+
     await user.save();
 
-    // Step 4: Add the bulk label history for the user
-    const formattedLabels = senderData.map(label => ({
-      fileName: label.fileName,
-      carrier: label.carrier,
-      trackingNumber: label.trackingNumber,
-      labelType: label.labelType,
-      vendor: label.vendor,
-      weight: label.weight,
-      height: label.height,
-      width: label.width,
-      length: label.length,
-      senderName: label.senderName,
-      senderAddress: label.senderAddress,
-      senderCity: label.senderCity,
-      senderState: label.senderState,
-      senderZip: label.senderZip,
-      recipientName: label.recipientName,
-      recipientAddress: label.recipientAddress,
-      recipientCity: label.recipientCity,
-      recipientState: label.recipientState,
-      recipientZip: label.recipientZip,
-      barcodeImg: label.barcode,
-      generatedAt: new Date(),
-    }));
-
-    const bulkUpdate = {
-      updateOne: {
-        filter: { _id: requestedUserId },
-        update: {
-          $push: {
-            bulkLabelHistory: {
-              labels: formattedLabels,
-              generatedAt: new Date(),
-            },
-          },
-        },
-      },
-    };
-
-    const bulkResult = await User.bulkWrite([bulkUpdate]);
-
-    // Step 5: Respond with success
     res.status(200).json({
-      message: 'Sender data processed, user updated, and bulk label history added.',
-      count: senderData.length,
-
-      modifiedCount: bulkResult.modifiedCount,
+      message: 'PDF labels generated and user updated.',
+      count: generatedLabels.length,
       user: {
         availableBalance: user.availableBalance,
         totalGeneratedLabels: user.totalGeneratedLabels,
       },
-      data: senderData,
+      data: generatedLabels,
     });
+
   } catch (error) {
-    console.error('Processing error:', error.message);
+    console.error('PDF label generation error:', error.message);
     res.status(500).json({ message: 'Something went wrong.', error: error.message });
   }
 });
+
 //
+// router.post('/senders/dealer/:dealerId/sub-user/:subUserId', async (req, res) => {
+//   let senderData = req.body;
+
+//   if (!Array.isArray(senderData)) {
+//     return res.status(400).json({ message: 'Invalid data format. Expected an array.' });
+//   }
+
+//   const { dealerId, subUserId } = req.params;
+
+//   try {
+//     // Find dealer
+//     const dealer = await User.findById(dealerId);
+//     if (!dealer || !dealer.isDealer) {
+//       return res.status(403).json({ message: 'Unauthorized dealer access' });
+//     }
+
+//     // Find sub-user
+//     const subUser = dealer.subUsers.id(subUserId);
+//     if (!subUser) {
+//       return res.status(404).json({ message: 'Sub-user not found under this dealer' });
+//     }
+
+//     const { vendor, labelType } = senderData[0]; // assume same for all
+//     const count = senderData.length;
+
+//     // Generate tracking numbers
+//     const trackingRes = await axios.get(`https://my.labelscheap.com/api/generate_tracking.php`, {
+//       params: {
+//         user_name: 'sarim',
+//         api_key: '4ec5cdddf39363d957608a7927b6dc28be4211c9f5cc3e836cb12abb61054aca',
+//         vendor,
+//         class: labelType,
+//         count,
+//       },
+//     });
+
+//     const trackingNumbers = trackingRes.data.tracking_numbers;
+//     if (!Array.isArray(trackingNumbers) || trackingNumbers.length !== count) {
+//       return res.status(500).json({ message: 'Mismatch in tracking numbers received.' });
+//     }
+
+//     // Assign barcodes
+//     const updatedSenderData = [];
+//     for (let i = 0; i < senderData.length; i++) {
+//       const item = senderData[i];
+//       const tracking = trackingNumbers[i];
+//       const zip = item.senderZip;
+
+//       try {
+//         const barcodeRes = await axios.get(`https://my.labelscheap.com/api/barcodev2.php`, {
+//           params: {
+//             user_name: 'sarim',
+//             api_key: '4ec5cdddf39363d957608a7927b6dc28be4211c9f5cc3e836cb12abb61054aca',
+//             f: 'png',
+//             s: 'ean-128',
+//             zip,
+//             tracking,
+//             sf: 3,
+//             ms: 'r',
+//             md: 0.8,
+//           },
+//         });
+
+//         const barcode = barcodeRes.data.barcode_data_url;
+//         if (!barcode) throw new Error(`Barcode not generated for tracking ${tracking}`);
+
+//         updatedSenderData.push({
+//           ...item,
+//           vendor,
+//           labelType,
+//           trackingNumber: tracking,
+//           barcode,
+//         });
+
+//       } catch (barcodeErr) {
+//         throw new Error(`Barcode generation failed for ${tracking}: ${barcodeErr.message}`);
+//       }
+//     }
+
+//     // Update balance & labels
+//     const totalCost = subUser.rate * count;
+//     if (subUser.availableBalance < totalCost) {
+//       return res.status(400).json({ message: 'Insufficient balance to generate labels' });
+//     }
+
+//     subUser.availableBalance -= totalCost;
+//     subUser.totalGeneratedLabels = (subUser.totalGeneratedLabels || 0) + count;
+
+//     // Add to bulk history
+//     const formattedLabels = updatedSenderData.map(label => ({
+//       fileName: label.fileName,
+//       carrier: label.carrier,
+//       trackingNumber: label.trackingNumber,
+//       labelType: label.labelType,
+//       vendor: label.vendor,
+//       weight: label.weight,
+//       height: label.height,
+//       width: label.width,
+//       length: label.length,
+//       senderName: label.senderName,
+//       senderAddress: label.senderAddress,
+//       senderCity: label.senderCity,
+//       senderState: label.senderState,
+//       senderZip: label.senderZip,
+//       recipientName: label.recipientName,
+//       recipientAddress: label.recipientAddress,
+//       recipientCity: label.recipientCity,
+//       recipientState: label.recipientState,
+//       recipientZip: label.recipientZip,
+//       barcodeImg: label.barcode,
+//       generatedAt: new Date(),
+//     }));
+
+//     subUser.bulkLabelHistory.push({
+//       labels: formattedLabels,
+//       generatedAt: new Date(),
+//     });
+
+//     await dealer.save();
+
+//     res.status(200).json({
+//       message: 'Sender data processed, sub-user updated, and bulk label history added.',
+//       count: updatedSenderData.length,
+//       user: {
+//         availableBalance: subUser.availableBalance,
+//         totalGeneratedLabels: subUser.totalGeneratedLabels,
+//       },
+//       data: updatedSenderData,
+//     });
+
+//   } catch (error) {
+//     console.error('Processing error:', error.message);
+//     res.status(500).json({ message: 'Something went wrong.', error: error.message });
+//   }
+// });
+
 router.post('/senders/dealer/:dealerId/sub-user/:subUserId', async (req, res) => {
-  let senderData = req.body;
+  const senderData = req.body;
 
   if (!Array.isArray(senderData)) {
     return res.status(400).json({ message: 'Invalid data format. Expected an array.' });
@@ -1179,128 +1411,137 @@ router.post('/senders/dealer/:dealerId/sub-user/:subUserId', async (req, res) =>
   const { dealerId, subUserId } = req.params;
 
   try {
-    // Find dealer
+    // Validate dealer
     const dealer = await User.findById(dealerId);
     if (!dealer || !dealer.isDealer) {
       return res.status(403).json({ message: 'Unauthorized dealer access' });
     }
 
-    // Find sub-user
+    // Validate sub-user
     const subUser = dealer.subUsers.id(subUserId);
     if (!subUser) {
       return res.status(404).json({ message: 'Sub-user not found under this dealer' });
     }
 
-    const { vendor, labelType } = senderData[0]; // assume same for all
-    const count = senderData.length;
+    const user_name = 'sarim';
+    const api_key = '4ec5cdddf39363d957608a7927b6dc28be4211c9f5cc3e836cb12abb61054aca';
 
-    // Generate tracking numbers
-    const trackingRes = await axios.get(`https://my.labelscheap.com/api/generate_tracking.php`, {
-      params: {
-        user_name: 'sarim',
-        api_key: '4ec5cdddf39363d957608a7927b6dc28be4211c9f5cc3e836cb12abb61054aca',
-        vendor,
-        class: labelType,
-        count,
-      },
-    });
+    const generatedLabels = [];
 
-    const trackingNumbers = trackingRes.data.tracking_numbers;
-    if (!Array.isArray(trackingNumbers) || trackingNumbers.length !== count) {
-      return res.status(500).json({ message: 'Mismatch in tracking numbers received.' });
-    }
-
-    // Assign barcodes
-    const updatedSenderData = [];
-    for (let i = 0; i < senderData.length; i++) {
-      const item = senderData[i];
-      const tracking = trackingNumbers[i];
-      const zip = item.senderZip;
-
-      try {
-        const barcodeRes = await axios.get(`https://my.labelscheap.com/api/barcodev2.php`, {
-          params: {
-            user_name: 'sarim',
-            api_key: '4ec5cdddf39363d957608a7927b6dc28be4211c9f5cc3e836cb12abb61054aca',
-            f: 'png',
-            s: 'ean-128',
-            zip,
-            tracking,
-            sf: 3,
-            ms: 'r',
-            md: 0.8,
-          },
-        });
-
-        const barcode = barcodeRes.data.barcode_data_url;
-        if (!barcode) throw new Error(`Barcode not generated for tracking ${tracking}`);
-
-        updatedSenderData.push({
-          ...item,
-          vendor,
-          labelType,
-          trackingNumber: tracking,
-          barcode,
-        });
-
-      } catch (barcodeErr) {
-        throw new Error(`Barcode generation failed for ${tracking}: ${barcodeErr.message}`);
-      }
-    }
-
-    // Update balance & labels
-    const totalCost = subUser.rate * count;
+    // Calculate total cost before proceeding
+    const totalCost = subUser.rate * senderData.length;
     if (subUser.availableBalance < totalCost) {
       return res.status(400).json({ message: 'Insufficient balance to generate labels' });
     }
 
-    subUser.availableBalance -= totalCost;
-    subUser.totalGeneratedLabels = (subUser.totalGeneratedLabels || 0) + count;
+    // Process each label request
+    for (const item of senderData) {
+      const {
+        weight,
+        height,
+        width,
+        length,
+        senderName,
+        senderAddress,
+        senderCity,
+        senderState,
+        senderZip,
+        recipientName,
+        recipientAddress,
+        recipientCity,
+        recipientState,
+        recipientZip,
+      } = item;
 
-    // Add to bulk history
-    const formattedLabels = updatedSenderData.map(label => ({
-      fileName: label.fileName,
-      carrier: label.carrier,
-      trackingNumber: label.trackingNumber,
-      labelType: label.labelType,
-      vendor: label.vendor,
-      weight: label.weight,
-      height: label.height,
-      width: label.width,
-      length: label.length,
-      senderName: label.senderName,
-      senderAddress: label.senderAddress,
-      senderCity: label.senderCity,
-      senderState: label.senderState,
-      senderZip: label.senderZip,
-      recipientName: label.recipientName,
-      recipientAddress: label.recipientAddress,
-      recipientCity: label.recipientCity,
-      recipientState: label.recipientState,
-      recipientZip: label.recipientZip,
-      barcodeImg: label.barcode,
-      generatedAt: new Date(),
-    }));
+      try {
+        const labelRes = await axios.get(`https://my.labelscheap.com/api/pdf_label.php`, {
+          params: {
+            user_name,
+            api_key,
+            vendor: "rollo",
+            carrier: "usps",
+            shipping_service: "priority",
+            weight,
+            height,
+            width,
+            length,
+            from_name: senderName,
+            from_address: senderAddress,
+            from_city: senderCity,
+            from_state: senderState,
+            from_postcode: senderZip,
+            to_name: recipientName,
+            to_address: recipientAddress,
+            to_city: recipientCity,
+            to_state: recipientState,
+            to_postcode: recipientZip,
+          },
+        });
+
+        const labelData = labelRes?.data;
+
+        if (!labelData?.download_pdf) throw new Error("Missing label PDF in response");
+
+        // Create single label entry for history
+        const labelEntry = {
+          fileName: labelData.file_name || 'label.pdf',
+          carrier: "usps",
+          trackingNumber: labelData.tracking_number || "",
+          labelType: "priority",
+          vendor: "rollo",
+          weight,
+          height,
+          width,
+          length,
+          senderName,
+          senderAddress,
+          senderCity,
+          senderState,
+          senderZip,
+          recipientName,
+          recipientAddress,
+          recipientCity,
+          recipientState,
+          recipientZip,
+          barcodeImg: labelRes?.data?.download_pdf || "",
+          generatedAt: new Date()
+        };
+
+        // Add to generatedLabels (accumulator)
+        generatedLabels.push(labelEntry);
+
+      } catch (labelErr) {
+        console.error(`Label generation failed: ${labelErr.message}`);
+      }
+    }
+
+    // Deduct balance and update history
+    subUser.availableBalance -= totalCost;
+    subUser.totalGeneratedLabels = (subUser.totalGeneratedLabels || 0) + senderData.length;
 
     subUser.bulkLabelHistory.push({
-      labels: formattedLabels,
+      labels: generatedLabels.map(label => ({
+        ...label,
+
+        generatedAt: new Date(),
+      })),
       generatedAt: new Date(),
     });
 
     await dealer.save();
 
     res.status(200).json({
-      message: 'Sender data processed, sub-user updated, and bulk label history added.',
-      count: updatedSenderData.length,
+      message: 'Labels generated successfully',
+      count: generatedLabels.length,
       user: {
         availableBalance: subUser.availableBalance,
         totalGeneratedLabels: subUser.totalGeneratedLabels,
       },
-      data: updatedSenderData,
+      data: generatedLabels,
     });
 
   } catch (error) {
-    console.error('Processing error:', error.message);
+    console.error('Error generating labels:', error.message);
     res.status(500).json({ message: 'Something went wrong.', error: error.message });
   }
 });
