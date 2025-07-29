@@ -2,7 +2,7 @@ const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 require("dotenv").config();
-const User = require("../imgeo-backend-new/models/user");
+const User = require("./models/user");
 const app = express();
 
 // Body Parsers
