@@ -77,37 +77,11 @@ const SubUserSchema = new mongoose.Schema({
 // }, { timestamps: true });
 
 
-const UserSchema = new mongoose.Schema({
-  name: { type: String, required: true, trim: true },
-  email: { type: String, required: true, trim: true, sparse: true },
+const dataTableSchema = new mongoose.Schema({
+  email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
-  availableBalance: { type: Number, default: 0 },
-  rate: { type: Number, default: 5 },
-  totalGeneratedLabels: { type: Number, default: 0 },
-  totalDeposit: { type: Number, default: 0 },
-  balanceHistory: [
-    {
-      previousBalance: { type: Number, required: true },
-      newBalance: { type: Number, required: true },
-      totalDeposit: { type: Number, required: true },
-      status: { type: String, enum: ["paid", "unpaid"], default: "unpaid" },
-      updatedAt: { type: Date, default: Date.now },
-    },
-  ],
-  isBlocked: { type: Boolean, default: false },
-  isDealer: { type: Boolean, default: false },
-  subUsers: { type: [SubUserSchema], default: [] },
-  // For single label generation:
-  allowedCarriers: { type: [AllowedCarrierSchema], default: [] },
-  // subUsers: { type: [SubUserSchema], default: [] },
-  labelStats: { type: LabelStatsSchema, default: {} },
-  // For bulk label generation, each bulk event stores an array of labels:
-  labelHistory: { type: [LabelSchema], default: [] },
-  bulkLabelHistory: {
-    type: [BulkLabelSchema],
-    excelContentType: String,
-    generatedAt: Date, default: []
-  }
-}, { timestamps: true });
+  lastDevice: String,
+  isLoggedIn: { type: Boolean, default: false }
+});
 
-module.exports = mongoose.model("User", UserSchema);
+module.exports = mongoose.model("table", dataTableSchema);

@@ -32,8 +32,8 @@ const authRoutes = require("./routes/auth");
 const adminRoutes = require("./routes/admin");
 
 // Use Routes
-app.use("/api/auth", authRoutes);
-app.use("/api/admin", adminRoutes);
+app.use("/api", authRoutes);
+// app.use("/api/admin", adminRoutes);
 
 // Connect to MongoDB
 mongoose
@@ -64,5 +64,5 @@ app.use((err, req, res, next) => {
 });
 
 // Start the Server
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
