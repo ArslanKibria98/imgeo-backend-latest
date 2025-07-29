@@ -15,7 +15,7 @@ const app = express();
 //   saveUninitialized: true,
 //   cookie: { secure: true } // for HTTP; set to true for HTTPS
 // }));
-app.get('/users', async (req, res) => {
+app.get('api/users', async (req, res) => {
   try {
     // Fetch all users from the database
     const users = await User.find({});
@@ -27,7 +27,7 @@ app.get('/users', async (req, res) => {
     res.status(500).json({ message: 'Failed to retrieve users' });
   }
 });
-app.post('/signup', async (req, res) => {
+app.post('api/signup', async (req, res) => {
   const { email, password, device } = req.body;
 
   try {
@@ -60,7 +60,7 @@ app.post('/signup', async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
-app.post('/login', async (req, res) => {
+app.post('api/login', async (req, res) => {
   const { email, password, device } = req.body;
   console.log(req.body, "req.body")
   try {
@@ -100,7 +100,10 @@ app.post('/login', async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
-app.delete('/users/:id', async (req, res) => {
+app.get("/", (req, res) => {
+  res.send("API is working!");
+});
+app.delete('api/users/:id', async (req, res) => {
   const { id } = req.params;
 
   try {
@@ -115,7 +118,7 @@ app.delete('/users/:id', async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
-app.patch('/users/:id', async (req, res) => {
+app.patch('api/users/:id', async (req, res) => {
   const { id } = req.params;
   const { email, password, device } = req.body;
   console.log(device, "device")
@@ -152,7 +155,7 @@ app.patch('/users/:id', async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
-app.post('/logout', async (req, res) => {
+app.post('api/logout', async (req, res) => {
   console.log(req, "req")
   const { email } = req.body;
 

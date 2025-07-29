@@ -1,41 +1,198 @@
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
-const path = require("path");
 require("dotenv").config();
-
-
+const User = require("../imgeo-backend-new/models/user");
 const app = express();
-app.use(express.json({ limit: "50mb" }));  // Adjust based on your needs
+
+// Body Parsers
+app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
-// CORS Configuration
-// const corsOptions = {
-//   origin: process.env.FRONTEND_URL || "http://localhost:3000", // Allow only specific origin
-//   methods: "GET,POST,PUT,DELETE", // Allowed HTTP methods
-//   allowedHeaders: "Content-Type,Authorization", // Allowed headers
-// };
+// CORS
 const corsOptions = {
-  origin: "*", // Allow all origins
-  methods: "GET,POST,PUT,DELETE", // Allowed HTTP methods
-  allowedHeaders: "Content-Type,Authorization", // Allowed headers
+  origin: "*",
+  methods: "GET,POST,PUT,DELETE",
+  allowedHeaders: "Content-Type,Authorization",
 };
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
 
-
-// Middleware
-// app.use(express.json()); // Parse JSON bodies
-
-// Import Routes
+// Routes
 const authRoutes = require("./routes/auth");
 const adminRoutes = require("./routes/admin");
+app.get('/api/users', async (req, res) => {
+  try {
+    // Fetch all users from the database
+    const users = await User.find({});
 
-// Use Routes
-app.use("/api", authRoutes);
+    // Return the list of users
+    res.json(users);
+  } catch (error) {
+    console.error('Failed to retrieve users:', error);
+    res.status(500).json({ message: 'Failed to retrieve users' });
+  }
+});
+app.post('/api/signup', async (req, res) => {
+  const { email, password, device } = req.body;
+
+  try {
+
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({ message: 'User already exists' });
+    }
+
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    // Create new user
+    const newUser = new User({
+      email,
+      password: password,
+      lastDevice: device,
+      isLoggedIn: false
+    });
+
+    // Save the new user
+    await newUser.save();
+    req.session.userId = newUser._id; // Set user session ID
+    req.session.device = device; // Set user device in session
+
+    res.status(201).json({ message: 'User created successfully', user: newUser });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
+  }
+});
+app.post('/api/login', async (req, res) => {
+  const { email, password, device } = req.body;
+  console.log(req.body, "req.body")
+  try {
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const validPassword = (password === user.password);
+    if (!validPassword) {
+      return res.status(400).json({ message: 'Invalid password' });
+    }
+    if (user.lastDevice == "") {
+      user.lastDevice = device;
+    }
+    console.log(user.lastDevice, device, "1234")
+
+    if (user.isLoggedIn) {
+      const errorMessage =
+        'User already logged in on this device'
+      return res.status(400).json({ message: errorMessage });
+    }
+    if (user.lastDevice != device) {
+      return res.status(400).json({ message: 'User already logged in from another device' });
+    }
+    user.isLoggedIn = true;
+
+
+    await user.save();
+
+    req.session.userId = user._id;
+    req.session.device = device;
+
+    res.json({ message: 'Logged in successfully', status: user.isLoggedIn });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
+  }
+});
+app.get("/", (req, res) => {
+  res.send("API is working!");
+});
+app.delete('/api/users/:id', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = await User.deleteOne({ _id: id });
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    res.json({ message: 'User deleted successfully' });
+  } catch (error) {
+    console.error('Failed to delete user:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+app.patch('/api/users/:id', async (req, res) => {
+  const { id } = req.params;
+  const { email, password, device } = req.body;
+  console.log(device, "device")
+  try {
+    const user = await User.findById({ _id: id });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+
+    if (email && email !== user.email) {
+
+      const emailExists = await User.findOne({ email });
+      if (emailExists) {
+        return res.status(400).json({ message: 'Email already in use' });
+      }
+      user.email = email;
+    }
+
+    if (password) {
+      user.password = password;
+    }
+    if (!device) {
+      user.lastDevice = "";
+    }
+    if (device) {
+      user.lastDevice = device;
+    }
+
+    await user.save();
+    res.json({ message: 'User updated successfully', user });
+  } catch (error) {
+    console.error('Failed to update user:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+app.post('/api/logout', async (req, res) => {
+  console.log(req, "req")
+  const { email } = req.body;
+
+  console.log(email, "email")
+  if (email === null) {
+    return res.status(401).json({ message: 'No user found' });
+  }
+
+  try {
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    user.isLoggedIn = false;
+
+    await user.save();
+    res.json({ message: 'Logged out successfully' });
+
+
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
+  }
+});
 // app.use("/api/admin", adminRoutes);
-
-// Connect to MongoDB
+app.get("/", (req, res) => {
+  res.send("✅ API running, all routes handled by authRoutes");
+});
+// MongoDB
 mongoose
   .connect(process.env.MONGO_URI, {
     useNewUrlParser: true,
@@ -44,25 +201,19 @@ mongoose
   .then(() => console.log(process.env.MONGO_URI, "✅ Connected to MongoDB"))
   .catch((err) => console.error("❌ MongoDB Connection Error:", err));
 
-// Serve Static Files (React Build)
-// Serve Static Files (React Build)
-// Serve Static Files (React Build)
-app.use(express.static(path.join(__dirname, "build")));
-
-// Ensure React handles routing
-app.get("*", (req, res, next) => {
-  if (req.path.startsWith("/api")) return next(); // Don't interfere with API routes
-  res.sendFile(path.resolve(__dirname, "build", "index.html"));
+// Catch-All for undefined routes
+app.use((req, res) => {
+  res.status(404).json({ message: "Route not found" });
 });
 
-
-
-// Error Handling Middleware
+// Error Handling
 app.use((err, req, res, next) => {
-  console.error("❌ Error:", err.stack);
+  console.error("❌ Unhandled Error:", err.stack);
   res.status(500).json({ message: "Something went wrong!" });
 });
 
-// Start the Server
+// Start Server
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+});
