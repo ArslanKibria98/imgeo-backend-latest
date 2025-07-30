@@ -2,6 +2,7 @@ const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 require("dotenv").config();
+const session = require('express-session');
 const User = require("./models/user");
 const app = express();
 const bcrypt = require('bcrypt');
@@ -17,7 +18,12 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
-
+app.use(session({
+  secret: 'yourSecretKey',
+  resave: false,
+  saveUninitialized: true,
+  cookie: { secure: true } // for HTTP; set to true for HTTPS
+}));
 // Routes
 const authRoutes = require("./routes/auth");
 const adminRoutes = require("./routes/admin");
@@ -57,8 +63,8 @@ app.post('/api/signup', async (req, res) => {
 
     // Save the new user
     await newUser.save();
-    // req.session.userId = newUser._id;
-    // req.session.device = device;
+    req.session.userId = newUser._id;
+    req.session.device = device;
 
     res.status(201).json({ message: 'User created successfully', user: newUser });
   } catch (error) {
@@ -97,8 +103,8 @@ app.post('/api/login', async (req, res) => {
 
     await user.save();
 
-    // req.session.userId = user._id;
-    // req.session.device = device;
+    req.session.userId = user._id;
+    req.session.device = device;
 
     res.json({ message: 'Logged in successfully', status: user.isLoggedIn });
   } catch (error) {
