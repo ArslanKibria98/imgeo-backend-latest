@@ -4,7 +4,7 @@ const cors = require("cors");
 require("dotenv").config();
 const User = require("./models/user");
 const app = express();
-
+const bcrypt = require('bcrypt');
 // Body Parsers
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
@@ -57,8 +57,8 @@ app.post('/api/signup', async (req, res) => {
 
     // Save the new user
     await newUser.save();
-    req.session.userId = newUser._id; // Set user session ID
-    req.session.device = device; // Set user device in session
+    // req.session.userId = newUser._id;
+    // req.session.device = device;
 
     res.status(201).json({ message: 'User created successfully', user: newUser });
   } catch (error) {
@@ -68,7 +68,7 @@ app.post('/api/signup', async (req, res) => {
 });
 app.post('/api/login', async (req, res) => {
   const { email, password, device } = req.body;
-  console.log(req.body, "req.body")
+  console.log(req?.body, "req.body")
   try {
     const user = await User.findOne({ email });
     if (!user) {
@@ -97,8 +97,8 @@ app.post('/api/login', async (req, res) => {
 
     await user.save();
 
-    req.session.userId = user._id;
-    req.session.device = device;
+    // req.session.userId = user._id;
+    // req.session.device = device;
 
     res.json({ message: 'Logged in successfully', status: user.isLoggedIn });
   } catch (error) {
