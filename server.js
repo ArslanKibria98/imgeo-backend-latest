@@ -12,10 +12,7 @@ app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
 // CORS
 const isProduction = process.env.NODE_ENV === "production";
-const envOrigins = (process.env.CORS_ORIGINS || process.env.FRONTEND_URL || "")
-  .split(",")
-  .map((s) => s.trim())
-  .filter(Boolean);
+const envOriginRaw = process.env.CORS_ORIGINS || process.env.FRONTEND_URL || "";
 const defaultOrigins = [
   "https://imgeo-prod.netlify.app",
   "http://localhost:3000",
@@ -25,14 +22,39 @@ const defaultOrigins = [
   "http://127.0.0.1:5173",
   "http://127.0.0.1:5174",
 ];
-const allowedOrigins = envOrigins.length ? envOrigins : defaultOrigins;
+
+function normalizeOrigin(origin) {
+  if (!origin) return "";
+  // normalize for safe comparisons (trim, lowercase, no trailing slash)
+  let s = String(origin).trim();
+  // strip surrounding quotes (common in .env files)
+  if (
+    (s.startsWith('"') && s.endsWith('"')) ||
+    (s.startsWith("'") && s.endsWith("'"))
+  ) {
+    s = s.slice(1, -1);
+  }
+  return s.trim().toLowerCase().replace(/\/$/, "");
+}
+
+const envOrigins = envOriginRaw
+  .split(",")
+  .map(normalizeOrigin)
+  .filter(Boolean);
+
+const normalizedDefaultOrigins = defaultOrigins
+  .map(normalizeOrigin)
+  .filter(Boolean);
+const allowedOrigins = envOrigins.length ? envOrigins : normalizedDefaultOrigins;
+const allowedOriginSet = new Set(allowedOrigins);
 
 function isOriginAllowed(origin) {
-  if (!origin) return true; // non-browser clients (curl/Postman/mobile)
-  if (allowedOrigins.includes(origin)) return true;
+  const normalized = normalizeOrigin(origin);
+  if (!normalized) return true; // non-browser clients (curl/Postman/mobile)
+  if (allowedOriginSet.has(normalized)) return true;
   if (!isProduction) {
     // Dev convenience: allow localhost/127.0.0.1 on any port
-    if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return true;
+    if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(normalized)) return true;
   }
   return false;
 }
@@ -40,7 +62,9 @@ function isOriginAllowed(origin) {
 const corsOptions = {
   origin(origin, callback) {
     if (isOriginAllowed(origin)) return callback(null, true);
-    return callback(new Error(`CORS blocked for origin: ${origin}`));
+    // Don't throw an error (it becomes a 500 and looks like a backend bug).
+    // Returning false just omits CORS headers for disallowed origins.
+    return callback(null, false);
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
@@ -259,6 +283,7 @@ app.use((err, req, res, next) => {
 
 // Start Server
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+const HOST = process.env.HOST || "0.0.0.0";
+app.listen(PORT, HOST, () => {
+  console.log(`🚀 Server running on http://${HOST}:${PORT}`);
 });
