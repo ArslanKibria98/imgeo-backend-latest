@@ -12,10 +12,20 @@ app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
 // CORS
 const isProduction = process.env.NODE_ENV === "production";
-const allowedOrigins = (process.env.CORS_ORIGINS || process.env.FRONTEND_URL || "")
+const envOrigins = (process.env.CORS_ORIGINS || process.env.FRONTEND_URL || "")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
+const defaultOrigins = [
+  "https://imgeo-prod.netlify.app",
+  "http://localhost:3000",
+  "http://localhost:5173",
+  "http://localhost:5174",
+  "http://127.0.0.1:3000",
+  "http://127.0.0.1:5173",
+  "http://127.0.0.1:5174",
+];
+const allowedOrigins = envOrigins.length ? envOrigins : defaultOrigins;
 
 function isOriginAllowed(origin) {
   if (!origin) return true; // non-browser clients (curl/Postman/mobile)
