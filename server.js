@@ -45,8 +45,9 @@ const envOrigins = envOriginRaw
 const normalizedDefaultOrigins = defaultOrigins
   .map(normalizeOrigin)
   .filter(Boolean);
-const allowedOrigins = envOrigins.length ? envOrigins : normalizedDefaultOrigins;
-const allowedOriginSet = new Set(allowedOrigins);
+// Important: never let env accidentally override/block the known good defaults.
+// We always allow the default origins, and we *add* any env-provided origins.
+const allowedOriginSet = new Set([...normalizedDefaultOrigins, ...envOrigins]);
 
 function isOriginAllowed(origin) {
   const normalized = normalizeOrigin(origin);
