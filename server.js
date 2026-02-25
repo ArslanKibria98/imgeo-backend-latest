@@ -11,18 +11,47 @@ app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
 // CORS
+const isProduction = process.env.NODE_ENV === "production";
+const allowedOrigins = (process.env.CORS_ORIGINS || process.env.FRONTEND_URL || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+function isOriginAllowed(origin) {
+  if (!origin) return true; // non-browser clients (curl/Postman/mobile)
+  if (allowedOrigins.includes(origin)) return true;
+  if (!isProduction) {
+    // Dev convenience: allow localhost/127.0.0.1 on any port
+    if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return true;
+  }
+  return false;
+}
+
 const corsOptions = {
-  origin: "*",
-  methods: "GET,POST,PUT,DELETE,PATCH",
-  allowedHeaders: "Content-Type,Authorization",
+  origin(origin, callback) {
+    if (isOriginAllowed(origin)) return callback(null, true);
+    return callback(new Error(`CORS blocked for origin: ${origin}`));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  optionsSuccessStatus: 204,
+  // Note: leave allowedHeaders unset so `cors` reflects Access-Control-Request-Headers
 };
+
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
+
+// needed when deploying behind a proxy / load balancer (secure cookies, correct req.ip)
+app.set("trust proxy", 1);
 app.use(session({
   secret: 'yourSecretKey',
   resave: false,
   saveUninitialized: true,
-  cookie: { secure: true } // for HTTP; set to true for HTTPS
+  cookie: {
+    httpOnly: true,
+    secure: isProduction, // must be true when sameSite is 'none'
+    sameSite: isProduction ? "none" : "lax",
+  }
 }));
 // Routes
 const authRoutes = require("./routes/auth");
