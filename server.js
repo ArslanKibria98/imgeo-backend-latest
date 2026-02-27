@@ -15,6 +15,7 @@ const isProduction = process.env.NODE_ENV === "production";
 const envOriginRaw = process.env.CORS_ORIGINS || process.env.FRONTEND_URL || "";
 const defaultOrigins = [
   "https://imgeo-prod.netlify.app",
+  "https://imgeo-new.netlify.app",
   "http://localhost:3000",
   "http://localhost:5173",
   "http://localhost:5174",
