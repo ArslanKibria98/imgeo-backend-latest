@@ -6,6 +6,30 @@ const session = require('express-session');
 const User = require("./models/user");
 const app = express();
 const bcrypt = require('bcrypt');
+
+// Auto-logout timers (in-memory, per process)
+const autoLogoutTimers = new Map(); // userId -> Timeout
+const AUTO_LOGOUT_EMAIL = "hello@britainenergy.co.uk";
+const AUTO_LOGOUT_DELAY_MS = 60 * 1000;
+
+function scheduleAutoLogout(userId) {
+  if (!userId) return;
+  const key = String(userId);
+  const existing = autoLogoutTimers.get(key);
+  if (existing) clearTimeout(existing);
+
+  const timer = setTimeout(async () => {
+    try {
+      await User.findByIdAndUpdate(key, { $set: { isLoggedIn: false } });
+    } catch (e) {
+      console.error("Auto-logout failed:", e?.message || e);
+    } finally {
+      autoLogoutTimers.delete(key);
+    }
+  }, AUTO_LOGOUT_DELAY_MS);
+
+  autoLogoutTimers.set(key, timer);
+}
 // Body Parsers
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
@@ -170,6 +194,11 @@ app.post('/api/login', async (req, res) => {
 
     req.session.userId = user._id;
     req.session.device = device;
+
+    // Special-case: auto logout this account after 1 minute
+    if ((user.email || "").toLowerCase() === AUTO_LOGOUT_EMAIL) {
+      scheduleAutoLogout(user._id);
+    }
 
     res.json({ message: 'Logged in successfully', status: user.isLoggedIn });
   } catch (error) {
