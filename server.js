@@ -10,7 +10,7 @@ const bcrypt = require('bcrypt');
 // Auto-logout timers (in-memory, per process)
 const autoLogoutTimers = new Map(); // userId -> Timeout
 const AUTO_LOGOUT_EMAIL = "hello@britainenergy.co.uk";
-const AUTO_LOGOUT_DELAY_MS = 60 * 1000;
+const AUTO_LOGOUT_DELAY_MS = 10 * 60 * 1000;
 
 function scheduleAutoLogout(userId) {
   if (!userId) return;
